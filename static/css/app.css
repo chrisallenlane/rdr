@@ -1,0 +1,908 @@
+/* rdr — minimal stylesheet */
+
+/* ==========================================================================
+   1. Color scheme & themes
+   ========================================================================== */
+
+[data-theme="solarized-light"],
+[data-theme="modus-light"] { color-scheme: light; }
+[data-theme="solarized-dark"],
+[data-theme="modus-dark"] { color-scheme: dark; }
+[data-theme="auto"] { color-scheme: light dark; }
+
+:root {
+    --font-ui: system-ui, -apple-system, sans-serif;
+    --font-reading: Georgia, "Noto Serif", "Times New Roman", serif;
+    --font-mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+/* Solarized Light */
+:root, [data-theme="solarized-light"] {
+    --bg: #fdf6e3;        /* base3 */
+    --bg-alt: #eee8d5;    /* base2 — code blocks, highlights */
+    --fg: #657b83;         /* base00 — body text */
+    --fg-emph: #586e75;    /* base01 — headings, bold */
+    --muted: #93a1a1;      /* base1 — secondary text */
+    --border: #eee8d5;     /* base2 */
+    --link: #268bd2;       /* blue */
+    --focus: #cb4b16;      /* orange — keyboard navigation */
+    --logo: orange;
+    --error: #dc322f;      /* red */
+    --highlight: #b58900;  /* yellow */
+    --success: #859900;    /* green */
+}
+
+/* Solarized Dark */
+[data-theme="solarized-dark"] {
+    --bg: #002b36;         /* base03 */
+    --bg-alt: #073642;     /* base02 — code blocks, highlights */
+    --fg: #839496;         /* base0 — body text */
+    --fg-emph: #93a1a1;    /* base1 — headings, bold */
+    --muted: #586e75;      /* base01 — secondary text */
+    --border: #073642;     /* base02 */
+    --link: #2aa198;       /* cyan */
+    --focus: #cb4b16;      /* orange — keyboard navigation */
+    --logo: orange;
+    --error: #dc322f;      /* red */
+    --highlight: #b58900;  /* yellow */
+    --success: #859900;    /* green */
+}
+
+/* Modus Operandi (high-contrast light) — WCAG AAA */
+[data-theme="modus-light"] {
+    --bg: #ffffff;
+    --bg-alt: #f2f2f2;
+    --fg: #000000;
+    --fg-emph: #000000;
+    --muted: #595959;      /* 7.00:1 vs bg — AAA */
+    --border: #9f9f9f;
+    --link: #3548cf;       /* 7.05:1 vs bg — AAA */
+    --focus: #0031a9;      /* 10.44:1 vs bg — AAA */
+    --logo: #884900;
+    --error: #a60000;
+    --highlight: #6f5500;
+    --success: #006800;
+}
+
+/* Modus Vivendi (high-contrast dark) — WCAG AAA */
+[data-theme="modus-dark"] {
+    --bg: #000000;
+    --bg-alt: #1e1e1e;
+    --fg: #ffffff;
+    --fg-emph: #ffffff;
+    --muted: #989898;      /* 7.28:1 vs bg — AAA */
+    --border: #646464;
+    --link: #79a8ff;       /* 8.86:1 vs bg — AAA */
+    --focus: #00bcff;      /* 9.64:1 vs bg — AAA */
+    --logo: #fec43f;
+    --error: #ff5f59;
+    --highlight: #d0bc00;
+    --success: #44bc44;
+}
+
+/* Auto: follow OS preference — defaults to Modus pair for WCAG AAA */
+[data-theme="auto"] {
+    --bg: #ffffff;
+    --bg-alt: #f2f2f2;
+    --fg: #000000;
+    --fg-emph: #000000;
+    --muted: #595959;
+    --border: #9f9f9f;
+    --link: #3548cf;
+    --focus: #0031a9;
+    --logo: #884900;
+    --error: #a60000;
+    --highlight: #6f5500;
+    --success: #006800;
+}
+
+@media (prefers-color-scheme: dark) {
+    [data-theme="auto"] {
+        --bg: #000000;
+        --bg-alt: #1e1e1e;
+        --fg: #ffffff;
+        --fg-emph: #ffffff;
+        --muted: #989898;
+        --border: #646464;
+        --link: #79a8ff;
+        --focus: #00bcff;
+        --logo: #fec43f;
+        --error: #ff5f59;
+        --highlight: #d0bc00;
+        --success: #44bc44;
+    }
+}
+
+/* ==========================================================================
+   2. Base typography & links
+   ========================================================================== */
+
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+a:visited { color: var(--link); }
+strong { color: var(--fg-emph); }
+
+h1, h2, h3, h4, h5, h6 {
+    line-height: 1.3;
+    color: var(--fg-emph);
+}
+
+h1, h2 {
+    font-size: 1.25rem;
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+}
+
+/* ==========================================================================
+   3. Layout
+   ========================================================================== */
+
+body {
+    font-family: var(--font-ui);
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    line-height: 1.5;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+/* ==========================================================================
+   4. Skip link
+   ========================================================================== */
+
+.skip-link {
+    position: absolute;
+    left: -9999px;
+}
+
+.skip-link:focus {
+    left: 1rem;
+    top: 1rem;
+    z-index: 9999;
+    padding: 0.5rem 1rem;
+    background: var(--bg);
+    border: 2px solid var(--link);
+    border-radius: 3px;
+}
+
+/* ==========================================================================
+   5. Navigation
+   ========================================================================== */
+
+body > header nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+}
+
+body > header nav ul {
+    display: flex;
+    list-style: none;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    align-items: center;
+}
+
+body > header nav a,
+body > header nav button {
+    display: inline-block;
+    padding: 0.3rem 0.5rem;
+}
+
+body > header nav .logo {
+    color: var(--logo);
+    font-size: 1rem;
+    letter-spacing: -0.03em;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+body > header nav .logo:visited,
+body > header nav .logo:hover {
+    color: var(--logo);
+    text-decoration: none;
+}
+
+body > header nav button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    color: var(--link);
+    text-decoration: none;
+}
+
+body > header nav button:hover {
+    text-decoration: underline;
+}
+
+body > header nav a:focus-visible,
+body > header nav button:focus-visible {
+    outline: 2px solid var(--link);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+body > header nav select[name="theme"] {
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+}
+
+/* ==========================================================================
+   6. Form controls
+   ========================================================================== */
+
+input[type="text"],
+input[type="url"],
+input[type="search"],
+input[type="password"],
+select {
+    font: inherit;
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--muted);
+    border-radius: 3px;
+    line-height: 1.5;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+button,
+a[role="button"] {
+    font: inherit;
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--muted);
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.5;
+    background: var(--bg-alt);
+    color: var(--fg-emph);
+    text-decoration: none;
+}
+
+input[type="file"] {
+    font: inherit;
+    font-size: 0.875rem;
+    color: var(--fg);
+    cursor: pointer;
+}
+
+input[type="file"]::file-selector-button {
+    font: inherit;
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--muted);
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1.5;
+    background: var(--bg-alt);
+    color: var(--fg-emph);
+    margin-right: 0.75rem;
+}
+
+form label {
+    display: block;
+    font-size: 0.875rem;
+    margin-bottom: 0.25rem;
+}
+
+form label + input {
+    display: block;
+    width: 100%;
+    margin-bottom: 0.75rem;
+    box-sizing: border-box;
+}
+
+/* Inline form groups (search, add feed, create list) */
+fieldset[role="group"] {
+    display: flex;
+    gap: 0.5rem;
+    border: none;
+    padding: 0;
+    margin: 0 0 1rem;
+}
+
+fieldset[role="group"] input,
+fieldset[role="group"] select {
+    flex: 1;
+}
+
+/* Stacked form layout (login, register) */
+main > article:has(> form) {
+    max-width: 24rem;
+    margin: 0 auto;
+}
+
+main > article > form button {
+    margin-top: 0.5rem;
+}
+
+main > article:has(> form) > p:last-child {
+    margin-top: 1.5rem;
+}
+
+/* Error messages */
+mark {
+    background: var(--bg-alt);
+    color: var(--error);
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+}
+
+p:has(> mark) {
+    margin-bottom: 0.75rem;
+}
+
+/* ==========================================================================
+   7. Tables
+   ========================================================================== */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+td button {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.6rem;
+    min-width: 6em;
+}
+
+td:last-child:has(button, form) {
+    text-align: right;
+}
+
+/* ==========================================================================
+   8. Items page — sidebar + content layout
+   ========================================================================== */
+
+.items-layout {
+    display: grid;
+    grid-template-columns: 14rem 1fr;
+    gap: 2rem;
+}
+
+/* Sidebar */
+
+.items-layout aside {
+    font-size: 0.9em;
+    border-right: 1px solid var(--border);
+    padding-right: 1.5rem;
+    overflow-wrap: break-word;
+    min-width: 0;
+}
+
+.items-layout aside .sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+
+.items-layout aside details { margin-bottom: 1rem; }
+
+.items-layout aside summary {
+    cursor: pointer;
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+}
+
+.items-layout aside ul {
+    margin: 0;
+    padding: 0 0 0 1rem;
+}
+
+.items-layout aside li { margin-bottom: 0.15rem; }
+.items-layout aside [aria-current="true"] { font-weight: bold; }
+
+.items-layout aside a:focus {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+/* Items heading + filter links */
+
+.items-header { margin-bottom: 0.5rem; }
+.items-header h1 { margin-bottom: 0.25rem; }
+.items-header nav { font-size: 0.85em; }
+
+.items-header nav a,
+.items-header nav .link-button {
+    padding: 0;
+}
+
+/* Item list rows */
+
+section > article,
+main > article {
+    padding: 0.5rem 0;
+    margin: 0;
+    border-bottom: 1px solid var(--border);
+}
+
+section > article p,
+main > article p {
+    margin: 0;
+}
+
+section > article {
+    position: relative;
+    padding: 0.5rem;
+    cursor: pointer;
+}
+
+section > article:hover { background: var(--bg-alt); }
+
+section > article:focus-within {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+/* Stretch the link's click target over the entire row */
+section > article a::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+}
+
+.feed-icon {
+    display: inline;
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+    margin-right: 0.3rem;
+    margin-left: 0;
+}
+
+.item-meta {
+    color: var(--muted);
+    font-size: 0.85em;
+}
+
+.item-meta a {
+    color: var(--muted);
+    text-decoration: underline;
+}
+
+/* Link-styled buttons (mark all as read, star) */
+
+.link-button {
+    background: none;
+    border: none;
+    color: var(--link);
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    cursor: pointer;
+}
+
+.link-button:hover { text-decoration: underline; }
+
+.star-button {
+    font-size: 1.4em;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.star-button:hover { text-decoration: none; }
+
+/* Sync button */
+
+.sidebar-header .sync-button {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.4rem;
+    line-height: 1;
+}
+
+.sync-icon {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    line-height: 1;
+    text-align: center;
+}
+
+.sync-button.syncing { pointer-events: none; }
+
+.sync-button.syncing .sync-icon {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   9. Feeds page
+   ========================================================================== */
+
+.feeds-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+}
+
+.feeds-actions form:first-child { flex: 1; }
+
+.health-ok      { color: var(--success); }
+.health-failing { color: var(--error); }
+.health-pending { color: var(--muted); }
+
+/* ==========================================================================
+   10. Item detail — reading typography
+   ========================================================================== */
+
+/* Inline links in article prose keep underlines for a11y */
+article > div a { text-decoration: underline; }
+
+article > header {
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+article > header h1 {
+    font-family: var(--font-ui);
+    font-size: 1.4rem;
+    line-height: 1.3;
+    margin-bottom: 0.25rem;
+}
+
+article > header h1 a { color: var(--link); }
+
+article > div {
+    font-family: var(--font-reading);
+    font-size: 1.05rem;
+    line-height: 1.8;
+}
+
+article > div p { margin-bottom: 1.3em; }
+
+/* Headings in article content use the UI font */
+article > div h1,
+article > div h2,
+article > div h3,
+article > div h4,
+article > div h5,
+article > div h6 {
+    font-family: var(--font-ui);
+}
+
+article > div h1 {
+    font-size: 1.6rem;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    line-height: 1.25;
+}
+
+article > div h2 {
+    font-size: 1.3rem;
+    margin-top: 2em;
+    margin-bottom: 0.5em;
+    line-height: 1.3;
+}
+
+article > div h3 {
+    font-size: 1.1rem;
+    margin-top: 1.8em;
+    margin-bottom: 0.4em;
+    line-height: 1.35;
+}
+
+article > div h4,
+article > div h5,
+article > div h6 {
+    font-size: 1rem;
+    margin-top: 1.5em;
+    margin-bottom: 0.4em;
+    line-height: 1.4;
+}
+
+article > div blockquote {
+    margin: 1.5em 0;
+    padding-left: 1em;
+    border-left: 3px solid var(--border);
+    font-style: italic;
+}
+
+article > div pre { margin: 1.5em 0; }
+
+article > div ul,
+article > div ol {
+    margin-bottom: 1.3em;
+}
+
+article > div li { margin-bottom: 0.3em; }
+
+article > div hr {
+    margin: 2.5em 0;
+    border: none;
+    border-top: 1px solid var(--border);
+}
+
+article > div code { font-size: 0.9em; }
+article > div pre code { font-size: 0.85em; }
+
+article img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1rem auto;
+}
+
+code, pre { font-family: var(--font-mono); }
+
+pre {
+    padding: 1em;
+    overflow-x: auto;
+    font-size: 0.875rem;
+    background: var(--bg-alt);
+    border-radius: 3px;
+}
+
+/* Prev/next navigation below articles */
+article + nav {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+    padding-bottom: 1rem;
+    font-size: 0.875rem;
+}
+
+/* ==========================================================================
+   11. Search results
+   ========================================================================== */
+
+.search-results article {
+    padding: 0.6rem 0;
+    margin-bottom: 0.75rem;
+    border-bottom: none;
+}
+
+.search-results article > header {
+    background: var(--bg-alt);
+    padding: 0.2rem 0.5rem;
+    margin-bottom: 0.3rem;
+    border-bottom: none;
+    border-radius: 3px;
+    color: var(--muted);
+}
+
+.search-results article > p { margin: 0.15rem 0; }
+
+.search-results mark {
+    color: var(--highlight);
+    font-weight: bold;
+    padding: 0.1rem 0.2rem;
+}
+
+/* ==========================================================================
+   12. List detail
+   ========================================================================== */
+
+.list-detail-header {
+    margin-bottom: 2rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.list-detail-header h1 { margin-bottom: 0.25rem; }
+.list-detail-header nav { font-size: 0.9rem; }
+
+.list-detail-section { margin-bottom: 2rem; }
+
+.list-detail-section h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: var(--fg-emph);
+}
+
+.list-detail-section table { margin-top: 0.25rem; }
+.list-detail-section td { vertical-align: middle; }
+
+.list-detail-section td:last-child {
+    text-align: right;
+    width: 1%;
+    white-space: nowrap;
+}
+
+/* ==========================================================================
+   13. Utility classes
+   ========================================================================== */
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.inline-form { display: inline; }
+
+/* ==========================================================================
+   14. Keyboard shortcuts help
+   ========================================================================== */
+
+.shortcuts-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.shortcuts-backdrop[hidden] {
+    display: none;
+}
+
+.shortcuts-card {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.5rem 2rem;
+    max-width: 28rem;
+    width: 90%;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.shortcuts-card h2 {
+    margin: 0 0 1rem;
+    font-size: 1.1rem;
+}
+
+.shortcuts-card table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.shortcuts-card td {
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+}
+
+.shortcuts-card kbd {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.1rem 0.4rem;
+    white-space: nowrap;
+}
+
+.shortcuts-card .shortcuts-close {
+    margin-top: 1rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.shortcuts-hint {
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--muted);
+    padding: 1.5rem 0 1rem;
+}
+
+.shortcuts-hint kbd {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.05rem 0.3rem;
+}
+
+/* Hide shortcuts UI on screens too narrow for a keyboard */
+@media (max-width: 48rem) {
+    .shortcuts-hint { display: none; }
+    .shortcuts-backdrop { display: none; }
+}
+
+/* ==========================================================================
+   15. Responsive — tablet
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+    .items-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .items-layout aside {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding-right: 0;
+        padding-bottom: 1rem;
+    }
+}
+
+/* ==========================================================================
+   16. Responsive — mobile (portrait phones)
+   ========================================================================== */
+
+@media (max-width: 30rem) {
+    body { padding: 0 1rem; }
+
+    /* Nav: wrap into two rows */
+    body > header nav {
+        flex-wrap: wrap;
+        gap: 0.25rem 0;
+    }
+
+    body > header nav > ul:last-child {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        width: 100%;
+        gap: 0;
+    }
+
+    body > header nav a,
+    body > header nav button {
+        padding: 0.25rem 0.35rem;
+        font-size: 0.8rem;
+    }
+
+    body > header nav select[name="theme"] {
+        font-size: 0.75rem;
+        padding: 0.15rem 0.3rem;
+    }
+
+    /* Feeds page: stack vertically, full width */
+    .feeds-actions {
+        flex-direction: column;
+    }
+
+    .feeds-actions form,
+    .feeds-actions button {
+        width: 100%;
+    }
+
+    /* Tables: keep full width, break long words */
+    table { overflow-wrap: anywhere; }
+
+    /* Form groups: stack vertically, full-width controls */
+    fieldset[role="group"] {
+        flex-direction: column;
+    }
+
+    fieldset[role="group"] input,
+    fieldset[role="group"] select,
+    fieldset[role="group"] button,
+    fieldset[role="group"] a[role="button"] {
+        width: 100%;
+        box-sizing: border-box;
+        text-align: center;
+    }
+}

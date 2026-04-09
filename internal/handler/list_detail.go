@@ -1,0 +1,170 @@
+package handler
+
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"strconv"
+
+	"github.com/chrisallenlane/rdr/internal/middleware"
+	"github.com/chrisallenlane/rdr/internal/model"
+)
+
+// listDetailData carries data for the list detail page template.
+type listDetailData struct {
+	List      model.List
+	InList    []model.Feed
+	NotInList []model.Feed
+}
+
+func (s *Server) handleListDetail(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+
+	listID, ok := s.pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+
+	// Query list with ownership check.
+	var list model.List
+	var createdAt sql.NullString
+	err := s.db.QueryRow(
+		"SELECT id, user_id, name, created_at FROM lists WHERE id = ? AND user_id = ?",
+		listID, user.ID,
+	).Scan(&list.ID, &list.UserID, &list.Name, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		s.renderError(w, r, http.StatusNotFound, "List not found")
+		return
+	}
+	if err != nil {
+		slog.Error("querying list", "error", err)
+		s.renderInternalError(w, r)
+		return
+	}
+	if t := parseTime(createdAt); t != nil {
+		list.CreatedAt = *t
+	}
+
+	// Query feeds IN this list.
+	inRows, err := s.db.Query(
+		`SELECT f.id, f.title, f.url FROM feeds f
+		 JOIN list_feeds lf ON f.id = lf.feed_id
+		 WHERE lf.list_id = ? AND f.user_id = ?
+		 ORDER BY f.title ASC`,
+		listID, user.ID,
+	)
+	if err != nil {
+		slog.Error("querying feeds in list", "error", err)
+		s.renderInternalError(w, r)
+		return
+	}
+	defer func() { _ = inRows.Close() }()
+
+	inList, err := scanFeeds(inRows)
+	if err != nil {
+		slog.Error("scanning feeds in list", "error", err)
+		s.renderInternalError(w, r)
+		return
+	}
+
+	// Query feeds NOT in this list.
+	outRows, err := s.db.Query(
+		`SELECT f.id, f.title, f.url FROM feeds f
+		 WHERE f.user_id = ? AND f.id NOT IN (
+		     SELECT feed_id FROM list_feeds WHERE list_id = ?
+		 )
+		 ORDER BY f.title ASC`,
+		user.ID, listID,
+	)
+	if err != nil {
+		slog.Error("querying feeds not in list", "error", err)
+		s.renderInternalError(w, r)
+		return
+	}
+	defer func() { _ = outRows.Close() }()
+
+	notInList, err := scanFeeds(outRows)
+	if err != nil {
+		slog.Error("scanning feeds not in list", "error", err)
+		s.renderInternalError(w, r)
+		return
+	}
+
+	s.render(w, r, "list_detail.html", PageData{
+		Content: listDetailData{
+			List:      list,
+			InList:    inList,
+			NotInList: notInList,
+		},
+	})
+}
+
+func (s *Server) handleAddFeedToList(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+
+	listID, ok := s.pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+
+	feedID, err := strconv.ParseInt(r.FormValue("feed_id"), 10, 64)
+	if err != nil {
+		s.renderError(w, r, http.StatusBadRequest, "Invalid feed ID")
+		return
+	}
+
+	// Verify list ownership.
+	if !s.verifyOwnership(w, r, "lists", listID, user.ID) {
+		return
+	}
+
+	// Verify feed ownership.
+	if !s.verifyOwnership(w, r, "feeds", feedID, user.ID) {
+		return
+	}
+
+	_, err = s.db.Exec(
+		"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)",
+		listID, feedID,
+	)
+	if err != nil && !isUniqueViolation(err) {
+		slog.Error("adding feed to list", "error", err)
+		s.renderInternalError(w, r)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
+}
+
+func (s *Server) handleRemoveFeedFromList(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+
+	listID, ok := s.pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+
+	feedID, ok := s.pathInt64(w, r, "feedID")
+	if !ok {
+		return
+	}
+
+	// Verify list ownership.
+	if !s.verifyOwnership(w, r, "lists", listID, user.ID) {
+		return
+	}
+
+	_, err := s.db.Exec(
+		"DELETE FROM list_feeds WHERE list_id = ? AND feed_id = ?",
+		listID, feedID,
+	)
+	if err != nil {
+		slog.Error("removing feed from list", "error", err)
+		s.renderInternalError(w, r)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
+}

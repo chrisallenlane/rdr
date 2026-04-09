@@ -1,0 +1,63 @@
+{{define "title"}}{{.Content.Heading}} — rdr{{end}}
+{{define "content"}}
+<div class="items-layout">
+    <aside>
+        <div class="sidebar-header">
+            <a href="/items"{{if not (or .Content.FilterFeed .Content.FilterList)}} aria-current="true"{{end}}>All Items</a>
+            <form method="post" action="/feeds/sync" class="inline-form sync-form">
+                <button type="submit" class="sync-button" aria-label="Sync all feeds" title="Sync all feeds"><span class="sync-icon">⟳</span></button>
+            </form>
+        </div>
+        <details open>
+            <summary>Feeds</summary>
+            <ul>
+                {{range .Content.Feeds}}
+                <li><a href="/items?feed={{.ID}}"{{if eq .ID $.Content.FilterFeed}} aria-current="true"{{end}}>{{feedName .}}</a></li>
+                {{end}}
+            </ul>
+        </details>
+        {{if .Content.Lists}}
+        <details open>
+            <summary>Lists</summary>
+            <ul>
+                {{range .Content.Lists}}
+                <li><a href="/items?list={{.ID}}"{{if eq .ID $.Content.FilterList}} aria-current="true"{{end}}>{{.Name}}</a></li>
+                {{end}}
+            </ul>
+        </details>
+        {{end}}
+    </aside>
+    <section>
+        <div class="items-header">
+            <h1>{{.Content.Heading}}</h1>
+            <nav>
+                {{- if .Content.Items}}{{if gt .Content.UnreadCount 0}} <form method="post" action="/items/mark-read" class="inline-form">{{if .Content.FilterFeed}}<input type="hidden" name="feed" value="{{.Content.FilterFeed}}">{{end}}{{if .Content.FilterList}}<input type="hidden" name="list" value="{{.Content.FilterList}}">{{end}}[ <button type="submit" class="link-button">mark all as read</button> ]</form>{{end}}{{end}}
+                {{- if not .Content.FilterUnread}} [ <a href="/items?unread=1{{if .Content.FilterFeed}}&feed={{.Content.FilterFeed}}{{end}}{{if .Content.FilterList}}&list={{.Content.FilterList}}{{end}}">unread only</a> ]{{end}}
+                {{- if not .Content.FilterStarred}} [ <a href="/items?starred=1{{if .Content.FilterFeed}}&feed={{.Content.FilterFeed}}{{end}}{{if .Content.FilterList}}&list={{.Content.FilterList}}{{end}}">starred only</a> ]{{end}}
+                {{- if or .Content.FilterFeed .Content.FilterUnread .Content.FilterStarred .Content.FilterList}} [ <a href="/items">clear filters</a> ]{{end}}
+            </nav>
+        </div>
+        {{if .Content.Items}}
+        {{range .Content.Items}}
+        <article>
+            <p>
+                {{if not .Read}}<strong>{{end}}
+                <a href="/items/{{.ID}}">{{if hasFavicon (faviconSlug .)}}<img src="/favicons/{{faviconSlug .}}" alt="" class="feed-icon" width="16" height="16">{{end}}{{if .Title}}{{.Title}}{{else}}(untitled){{end}}</a>
+                {{if not .Read}}</strong><span class="sr-only">(unread)</span>{{end}}
+            </p>
+            <small class="item-meta">{{itemFeedName .}}{{if .PublishedAt}} · {{timeAgo .PublishedAt}}{{end}}</small>
+        </article>
+        {{end}}
+
+        {{/* Pagination */}}
+        <nav aria-label="Pagination">
+            {{if gt .Content.Page 1}}<a href="/items?page={{subtract .Content.Page 1}}{{if .Content.FilterFeed}}&feed={{.Content.FilterFeed}}{{end}}{{if .Content.FilterUnread}}&unread=1{{end}}{{if .Content.FilterStarred}}&starred=1{{end}}{{if .Content.FilterList}}&list={{.Content.FilterList}}{{end}}" aria-label="Newer page">← Newer</a>{{end}}
+            <span>Page {{.Content.Page}} of {{.Content.TotalPages}}</span>
+            {{if lt .Content.Page .Content.TotalPages}}<a href="/items?page={{add .Content.Page 1}}{{if .Content.FilterFeed}}&feed={{.Content.FilterFeed}}{{end}}{{if .Content.FilterUnread}}&unread=1{{end}}{{if .Content.FilterStarred}}&starred=1{{end}}{{if .Content.FilterList}}&list={{.Content.FilterList}}{{end}}" aria-label="Older page">Older →</a>{{end}}
+        </nav>
+        {{else}}
+        <p>No items yet. <a href="/feeds">Add some feeds</a> to get started.</p>
+        {{end}}
+    </section>
+</div>
+{{end}}

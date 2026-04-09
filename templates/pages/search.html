@@ -1,0 +1,44 @@
+{{define "title"}}Search — rdr{{end}}
+{{define "content"}}
+<h1>Search</h1>
+
+<form method="get" action="/search">
+    <fieldset role="group">
+        <input type="search" name="q" value="{{.Content.Query}}" aria-label="Search items" placeholder="Search items..." autofocus>
+        <button type="submit">Search</button>
+    </fieldset>
+</form>
+
+{{if .Content.Error}}
+<p><strong>{{.Content.Error}}</strong></p>
+{{end}}
+
+{{if .Content.Query}}
+    {{if .Content.Results}}
+    <p>{{.Content.TotalResults}} results for "{{.Content.Query}}"</p>
+    <div class="search-results">
+    {{range .Content.Results}}
+    <article>
+        <header>
+            <small>{{.FeedTitle}}</small>
+            {{if .PublishedAt}} · <small>{{timeAgo .PublishedAt}}</small>{{end}}
+        </header>
+        <p>
+            <a href="/items/{{.ID}}">{{if .TitleSnippet}}{{.TitleSnippet}}{{else}}{{.Title}}{{end}}</a>
+        </p>
+        {{if .ContentSnippet}}<p><small>{{.ContentSnippet}}</small></p>{{end}}
+    </article>
+    {{end}}
+    </div>
+
+    {{/* Pagination */}}
+    <nav aria-label="Pagination">
+        {{if gt .Content.Page 1}}<a href="/search?q={{.Content.Query}}&page={{subtract .Content.Page 1}}">← Previous</a>{{end}}
+        <span>Page {{.Content.Page}} of {{.Content.TotalPages}}</span>
+        {{if lt .Content.Page .Content.TotalPages}}<a href="/search?q={{.Content.Query}}&page={{add .Content.Page 1}}">Next →</a>{{end}}
+    </nav>
+    {{else if not .Content.Error}}
+    <p>No items matching "{{.Content.Query}}"</p>
+    {{end}}
+{{end}}
+{{end}}

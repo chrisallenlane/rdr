@@ -1,0 +1,8 @@
+bin/
+*.db
+*.db-shm
+*.db-wal
+.env
+.playwright-mcp/
+PROJECT_PROGRESS.md
+coverage.out

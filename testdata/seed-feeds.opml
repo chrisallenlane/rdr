@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>rdr feeds</title>
+  </head>
+  <body>
+    <outline type="rss" text="The Cloudflare Blog" title="The Cloudflare Blog" xmlUrl="https://blog.cloudflare.com/rss/" htmlUrl="https://blog.cloudflare.com"></outline>
+    <outline type="rss" text="Blog on Tailscale" title="Blog on Tailscale" xmlUrl="https://tailscale.com/blog/index.xml" htmlUrl="https://tailscale.com/blog/"></outline>
+    <outline type="rss" text="Dropbox Tech Blog" title="Dropbox Tech Blog" xmlUrl="https://dropbox.tech/feed" htmlUrl="https://dropbox.tech"></outline>
+    <outline type="rss" text="Engineering at Slack" title="Engineering at Slack" xmlUrl="https://slack.engineering/feed/" htmlUrl="https://slack.engineering"></outline>
+    <outline type="rss" text="GitLab" title="GitLab" xmlUrl="https://about.gitlab.com/atom.xml" htmlUrl="https://about.gitlab.com/blog"></outline>
+    <outline type="rss" text="Grafana Labs blog on Grafana Labs" title="Grafana Labs blog on Grafana Labs" xmlUrl="https://grafana.com/blog/index.xml" htmlUrl="https://grafana.com/blog/"></outline>
+    <outline type="rss" text="Oxide Computer Company Blog" title="Oxide Computer Company Blog" xmlUrl="https://oxide.computer/blog/feed" htmlUrl="https://oxide.computer/"></outline>
+    <outline type="rss" text="Sentry Blog RSS" title="Sentry Blog RSS" xmlUrl="https://blog.sentry.io/feed.xml" htmlUrl="https://blog.sentry.io"></outline>
+    <outline type="rss" text="Signal Blog" title="Signal Blog" xmlUrl="https://signal.org/blog/rss.xml" htmlUrl="https://signal.org/blog/"></outline>
+    <outline type="rss" text="Spotify Engineering" title="Spotify Engineering" xmlUrl="https://engineering.atspotify.com/feed/" htmlUrl="https://engineering.atspotify.com/"></outline>
+    <outline type="rss" text="Stories by Netflix Technology Blog on Medium" title="Stories by Netflix Technology Blog on Medium" xmlUrl="https://netflixtechblog.medium.com/feed" htmlUrl="https://medium.com/@netflixtechblog?source=rss-c3aeaf49d8a4------2"></outline>
+    <outline type="rss" text="Stripe Blog" title="Stripe Blog" xmlUrl="https://stripe.com/blog/feed.rss" htmlUrl="https://stripe.com/blog"></outline>
+    <outline type="rss" text="The Fly Blog" title="The Fly Blog" xmlUrl="https://fly.io/blog/feed.xml" htmlUrl="https://fly.io/blog/"></outline>
+    <outline type="rss" text="The Go Blog" title="The Go Blog" xmlUrl="https://go.dev/blog/feed.atom"></outline>
+    <outline type="rss" text="The latest from GitHub&#39;s engineering team - The GitHub Blog" title="The latest from GitHub&#39;s engineering team - The GitHub Blog" xmlUrl="https://github.blog/engineering/feed/" htmlUrl="https://github.blog/engineering/"></outline>
+  </body>
+</opml>

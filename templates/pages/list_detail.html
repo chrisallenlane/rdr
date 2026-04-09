@@ -1,0 +1,54 @@
+{{define "title"}}{{.Content.List.Name}} — rdr{{end}}
+{{define "content"}}
+<header class="list-detail-header">
+    <h1>{{.Content.List.Name}}</h1>
+    <nav>
+        <a href="/lists">&larr; Back to lists</a> &middot; <a href="/items?list={{.Content.List.ID}}">View items</a>
+    </nav>
+</header>
+
+<section class="list-detail-section">
+    <h2>Feeds in this list</h2>
+    {{if .Content.InList}}
+    <table>
+        <tbody>
+            {{range .Content.InList}}
+            <tr>
+                <td>{{feedName .}}</td>
+                <td>
+                    <form method="post" action="/lists/{{$.Content.List.ID}}/feeds/{{.ID}}/delete">
+                        <button type="submit" aria-label="Remove {{feedName .}}">Remove</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p>No feeds in this list yet.</p>
+    {{end}}
+</section>
+
+<section class="list-detail-section">
+    <h2>Available feeds</h2>
+    {{if .Content.NotInList}}
+    <table>
+        <tbody>
+            {{range .Content.NotInList}}
+            <tr>
+                <td>{{feedName .}}</td>
+                <td>
+                    <form method="post" action="/lists/{{$.Content.List.ID}}/feeds">
+                        <input type="hidden" name="feed_id" value="{{.ID}}">
+                        <button type="submit" aria-label="Add {{feedName .}}">Add</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p>All feeds are already in this list.</p>
+    {{end}}
+</section>
+{{end}}

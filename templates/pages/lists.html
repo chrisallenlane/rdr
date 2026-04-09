@@ -1,0 +1,39 @@
+{{define "title"}}Lists — rdr{{end}}
+{{define "content"}}
+<h1>Lists</h1>
+
+<form method="post" action="/lists">
+    <fieldset role="group">
+        <input type="text" name="name" aria-label="List name" placeholder="New list name" required>
+        <button type="submit">Create List</button>
+    </fieldset>
+</form>
+
+{{if .Content.Error}}
+<p><mark>{{.Content.Error}}</mark></p>
+{{end}}
+
+{{if .Content.Lists}}
+<table>
+    <thead>
+        <tr><th>List</th><th>Feeds</th><th></th><th></th></tr>
+    </thead>
+    <tbody>
+        {{range .Content.Lists}}
+        <tr>
+            <td><a href="/lists/{{.ID}}">{{.Name}}</a></td>
+            <td>{{.FeedCount}}</td>
+            <td><a href="/items?list={{.ID}}">View items</a></td>
+            <td>
+                <form method="post" action="/lists/{{.ID}}/delete">
+                    <button type="submit" aria-label="Remove {{.Name}}">Remove</button>
+                </form>
+            </td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{else}}
+<p>No lists yet. Create one above to organize your feeds.</p>
+{{end}}
+{{end}}

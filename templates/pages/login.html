@@ -1,0 +1,17 @@
+{{define "title"}}Login — rdr{{end}}
+{{define "content"}}
+<article>
+    <h1>Login</h1>
+    {{if .Content.Error}}
+    <p><mark>{{.Content.Error}}</mark></p>
+    {{end}}
+    <form method="post" action="/login">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" value="{{.Content.Username}}" required autocomplete="username">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password">
+        <button type="submit">Login</button>
+    </form>
+    <p>Don't have an account? <a href="/register">Register</a></p>
+</article>
+{{end}}

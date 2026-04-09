@@ -1,0 +1,343 @@
+package handler
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+)
+
+// insertTestList inserts a list owned by userID and returns its ID.
+func insertTestList(t *testing.T, s *Server, userID int64, name string) int64 {
+	t.Helper()
+	result, err := s.db.Exec(
+		"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+		userID, name,
+	)
+	if err != nil {
+		t.Fatalf("inserting list %q: %v", name, err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("LastInsertId: %v", err)
+	}
+	return id
+}
+
+// insertTestFeed inserts a feed owned by userID and returns its ID.
+func insertTestFeed(t *testing.T, s *Server, userID int64, feedURL string) int64 {
+	t.Helper()
+	result, err := s.db.Exec(
+		"INSERT INTO feeds (user_id, url) VALUES (?, ?)",
+		userID, feedURL,
+	)
+	if err != nil {
+		t.Fatalf("inserting feed %q: %v", feedURL, err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("LastInsertId: %v", err)
+	}
+	return id
+}
+
+// TestHandleListDetail covers GET /lists/{id}.
+func TestHandleListDetail(t *testing.T) {
+	t.Run("own list returns 200", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		listID := insertTestList(t, s, userID, "My List")
+
+		req := authedRequest(t, s, userID, http.MethodGet, fmt.Sprintf("/lists/%d", listID))
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("another user's list returns 404", func(t *testing.T) {
+		s := newTestServer(t)
+		ownerID := createTestUser(t, s, "owner", "testpass1")
+		viewerID := createTestUser(t, s, "viewer", "testpass2")
+		listID := insertTestList(t, s, ownerID, "Owner List")
+
+		req := authedRequest(
+			t, s, viewerID,
+			http.MethodGet,
+			fmt.Sprintf("/lists/%d", listID),
+		)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("non-existent list returns 404", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		req := authedRequest(t, s, userID, http.MethodGet, "/lists/99999")
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+}
+
+// TestHandleAddFeedToList covers POST /lists/{id}/feeds.
+func TestHandleAddFeedToList(t *testing.T) {
+	t.Run("add own feed to own list redirects to list", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		listID := insertTestList(t, s, userID, "My List")
+		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
+
+		form := url.Values{"feed_id": {fmt.Sprintf("%d", feedID)}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+		}
+		want := fmt.Sprintf("/lists/%d", listID)
+		if loc := rec.Header().Get("Location"); loc != want {
+			t.Errorf("Location = %q, want %q", loc, want)
+		}
+
+		var count int
+		if err := s.db.QueryRow(
+			"SELECT COUNT(*) FROM list_feeds WHERE list_id = ? AND feed_id = ?",
+			listID, feedID,
+		).Scan(&count); err != nil {
+			t.Fatalf("querying list_feeds: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("list_feeds row count = %d, want 1", count)
+		}
+	})
+
+	t.Run("add feed to another user's list returns 404", func(t *testing.T) {
+		s := newTestServer(t)
+		ownerID := createTestUser(t, s, "owner", "testpass1")
+		attackerID := createTestUser(t, s, "attacker", "testpass2")
+		listID := insertTestList(t, s, ownerID, "Owner List")
+		feedID := insertTestFeed(t, s, attackerID, "https://attacker.example.com/feed.xml")
+
+		form := url.Values{"feed_id": {fmt.Sprintf("%d", feedID)}}
+		req := authedRequest(
+			t, s, attackerID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("add another user's feed to own list returns 404", func(t *testing.T) {
+		s := newTestServer(t)
+		ownerID := createTestUser(t, s, "owner", "testpass1")
+		otherID := createTestUser(t, s, "other", "testpass2")
+		listID := insertTestList(t, s, ownerID, "Owner List")
+		feedID := insertTestFeed(t, s, otherID, "https://other.example.com/feed.xml")
+
+		form := url.Values{"feed_id": {fmt.Sprintf("%d", feedID)}}
+		req := authedRequest(
+			t, s, ownerID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("adding a duplicate feed is silently accepted", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		listID := insertTestList(t, s, userID, "My List")
+		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
+
+		// Pre-insert the association.
+		if _, err := s.db.Exec(
+			"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)",
+			listID, feedID,
+		); err != nil {
+			t.Fatalf("pre-inserting list_feed: %v", err)
+		}
+
+		form := url.Values{"feed_id": {fmt.Sprintf("%d", feedID)}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		// Duplicate should still redirect — no error surfaced to the client.
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+		}
+	})
+
+	t.Run("invalid feed_id returns 400", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		listID := insertTestList(t, s, userID, "My List")
+
+		form := url.Values{"feed_id": {"not-a-number"}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+	})
+}
+
+// TestHandleRemoveFeedFromList covers POST /lists/{id}/feeds/{feedID}/delete.
+func TestHandleRemoveFeedFromList(t *testing.T) {
+	t.Run("remove feed from own list redirects to list", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		listID := insertTestList(t, s, userID, "My List")
+		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
+
+		if _, err := s.db.Exec(
+			"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)",
+			listID, feedID,
+		); err != nil {
+			t.Fatalf("inserting list_feed: %v", err)
+		}
+
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds/%d/delete", listID, feedID),
+		)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+		}
+		want := fmt.Sprintf("/lists/%d", listID)
+		if loc := rec.Header().Get("Location"); loc != want {
+			t.Errorf("Location = %q, want %q", loc, want)
+		}
+
+		var count int
+		if err := s.db.QueryRow(
+			"SELECT COUNT(*) FROM list_feeds WHERE list_id = ? AND feed_id = ?",
+			listID, feedID,
+		).Scan(&count); err != nil {
+			t.Fatalf("querying list_feeds: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("list_feeds row count = %d, want 0", count)
+		}
+	})
+
+	t.Run("remove feed from another user's list returns 404", func(t *testing.T) {
+		s := newTestServer(t)
+		ownerID := createTestUser(t, s, "owner", "testpass1")
+		attackerID := createTestUser(t, s, "attacker", "testpass2")
+		listID := insertTestList(t, s, ownerID, "Owner List")
+		feedID := insertTestFeed(t, s, ownerID, "https://example.com/feed.xml")
+
+		if _, err := s.db.Exec(
+			"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)",
+			listID, feedID,
+		); err != nil {
+			t.Fatalf("inserting list_feed: %v", err)
+		}
+
+		req := authedRequest(
+			t, s, attackerID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds/%d/delete", listID, feedID),
+		)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("non-numeric list ID returns 400", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			"/lists/abc/feeds/1/delete",
+		)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("non-numeric feed ID returns 400", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		listID := insertTestList(t, s, userID, "My List")
+
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds/abc/delete", listID),
+		)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+	})
+}

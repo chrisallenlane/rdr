@@ -1,0 +1,19 @@
+{{define "title"}}Register — rdr{{end}}
+{{define "content"}}
+<article>
+    <h1>Register</h1>
+    {{if .Content.Error}}
+    <p><mark>{{.Content.Error}}</mark></p>
+    {{end}}
+    <form method="post" action="/register">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" value="{{.Content.Username}}" required minlength="3" autocomplete="username">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+        <label for="password_confirm">Confirm Password</label>
+        <input type="password" id="password_confirm" name="password_confirm" required minlength="8" autocomplete="new-password">
+        <button type="submit">Register</button>
+    </form>
+    <p>Already have an account? <a href="/login">Log in</a></p>
+</article>
+{{end}}

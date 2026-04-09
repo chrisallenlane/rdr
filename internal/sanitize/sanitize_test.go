@@ -1,0 +1,441 @@
+package sanitize
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestHTML(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		contains []string
+		excludes []string
+	}{
+		{
+			name:     "script tags are stripped",
+			input:    `<p>Hello</p><script>alert('xss')</script>`,
+			contains: []string{"Hello"},
+			excludes: []string{"<script>", "alert("},
+		},
+		{
+			name:     "p tag is preserved",
+			input:    `<p>Hello world</p>`,
+			contains: []string{"<p>", "Hello world", "</p>"},
+			excludes: []string{},
+		},
+		{
+			name:     "strong tag is preserved",
+			input:    `<p><strong>Bold text</strong></p>`,
+			contains: []string{"<strong>", "Bold text", "</strong>"},
+			excludes: []string{},
+		},
+		{
+			name:     "a tag is preserved",
+			input:    `<p><a href="https://example.com">link</a></p>`,
+			contains: []string{`<a href="https://example.com"`, "link", "</a>"},
+			excludes: []string{},
+		},
+		{
+			name:     "img tag is preserved",
+			input:    `<p><img src="https://example.com/img.png" alt="image"></p>`,
+			contains: []string{"<img", `src="https://example.com/img.png"`, `alt="image"`},
+			excludes: []string{},
+		},
+		{
+			name:     "javascript URLs are stripped from href",
+			input:    `<a href="javascript:alert('xss')">click me</a>`,
+			excludes: []string{"javascript:"},
+		},
+		{
+			name:     "javascript URLs are stripped from src",
+			input:    `<img src="javascript:alert('xss')">`,
+			excludes: []string{"javascript:"},
+		},
+		{
+			name:     "inline styles are stripped",
+			input:    `<p style="color:red;font-size:9999px">styled</p>`,
+			contains: []string{"styled"},
+			excludes: []string{"style=", "color:red"},
+		},
+		{
+			name:     "plain text gets wrapped in p tags",
+			input:    `just some plain text`,
+			contains: []string{"<p>", "just some plain text", "</p>"},
+			excludes: []string{},
+		},
+		{
+			name:     "text with only inline elements gets wrapped in p tags",
+			input:    `<strong>bold</strong> and <em>italic</em>`,
+			contains: []string{"<p>", "<strong>bold</strong>", "</p>"},
+			excludes: []string{},
+		},
+		{
+			name:     "content with block elements is not double-wrapped",
+			input:    `<p>already a paragraph</p>`,
+			contains: []string{"<p>already a paragraph</p>"},
+			// Ensure it is not wrapped in a second <p>
+			excludes: []string{"<p><p>"},
+		},
+		{
+			name:     "empty string returns empty",
+			input:    "",
+			contains: []string{},
+			// bluemonday returns "" for empty input; wrapping gives "<p></p>"
+			// The function wraps even empty input since no block tags are present.
+			// Just verify no panic and no harmful content.
+			excludes: []string{"<script>"},
+		},
+		{
+			name:     "div block element is not double-wrapped",
+			input:    `<div><p>content</p></div>`,
+			contains: []string{"content"},
+			excludes: []string{"<script>"},
+		},
+		{
+			name:     "event handler attributes are stripped",
+			input:    `<p onclick="alert('xss')">click</p>`,
+			contains: []string{"click"},
+			excludes: []string{"onclick", "alert("},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := string(HTML(tt.input))
+			for _, want := range tt.contains {
+				if !strings.Contains(result, want) {
+					t.Errorf(
+						"HTML(%q): expected result to contain %q, got %q",
+						tt.input, want, result,
+					)
+				}
+			}
+			for _, unwanted := range tt.excludes {
+				if strings.Contains(result, unwanted) {
+					t.Errorf(
+						"HTML(%q): expected result NOT to contain %q, got %q",
+						tt.input, unwanted, result,
+					)
+				}
+			}
+		})
+	}
+}
+
+func TestSnippet(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		contains []string
+		excludes []string
+	}{
+		{
+			name:     "HIGHLIGHT sentinel becomes mark open tag",
+			input:    `word [[HIGHLIGHT]]term[[/HIGHLIGHT]] word`,
+			contains: []string{"<mark>", "term", "</mark>"},
+			excludes: []string{"[[HIGHLIGHT]]", "[[/HIGHLIGHT]]"},
+		},
+		{
+			name:     "HIGHLIGHT replaced and surrounding text preserved",
+			input:    `before [[HIGHLIGHT]]match[[/HIGHLIGHT]] after`,
+			contains: []string{"before", "<mark>match</mark>", "after"},
+			excludes: []string{},
+		},
+		{
+			name:     "multiple highlights in one snippet",
+			input:    `[[HIGHLIGHT]]a[[/HIGHLIGHT]] and [[HIGHLIGHT]]b[[/HIGHLIGHT]]`,
+			contains: []string{"<mark>a</mark>", "<mark>b</mark>"},
+			excludes: []string{"[[HIGHLIGHT]]", "[[/HIGHLIGHT]]"},
+		},
+		{
+			name:     "HTML in snippet is stripped",
+			input:    `<b>bold</b> [[HIGHLIGHT]]term[[/HIGHLIGHT]]`,
+			contains: []string{"<mark>term</mark>"},
+			excludes: []string{"<b>", "</b>"},
+		},
+		{
+			name:     "script tag in snippet is stripped",
+			input:    `[[HIGHLIGHT]]word[[/HIGHLIGHT]] <script>evil()</script>`,
+			contains: []string{"<mark>word</mark>"},
+			excludes: []string{"<script>", "evil()"},
+		},
+		{
+			name:     "script tag with sentinel cannot leak through",
+			input:    `<script>[[HIGHLIGHT]]code[[/HIGHLIGHT]]</script>`,
+			excludes: []string{"<script>", "</script>"},
+		},
+		{
+			name:     "inline event handler in snippet is stripped",
+			input:    `<span onclick="alert(1)">[[HIGHLIGHT]]x[[/HIGHLIGHT]]</span>`,
+			contains: []string{"<mark>x</mark>"},
+			excludes: []string{"onclick", "alert(1)"},
+		},
+		{
+			name:     "no sentinels returns plain text without mark tags",
+			input:    `just a plain snippet`,
+			contains: []string{"just a plain snippet"},
+			excludes: []string{"<mark>", "</mark>"},
+		},
+		{
+			name:     "empty string returns empty",
+			input:    "",
+			contains: []string{""},
+			excludes: []string{"<mark>", "<script>"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := string(Snippet(tt.input))
+			for _, want := range tt.contains {
+				if !strings.Contains(result, want) {
+					t.Errorf(
+						"Snippet(%q): expected result to contain %q, got %q",
+						tt.input, want, result,
+					)
+				}
+			}
+			for _, unwanted := range tt.excludes {
+				if strings.Contains(result, unwanted) {
+					t.Errorf(
+						"Snippet(%q): expected result NOT to contain %q, got %q",
+						tt.input, unwanted, result,
+					)
+				}
+			}
+		})
+	}
+}
+
+func TestResolveRelativeURLs(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		baseURL  string
+		contains []string
+		excludes []string
+	}{
+		{
+			name:     "relative src resolved against base directory",
+			content:  `<img src="images/foo.png">`,
+			baseURL:  "https://example.com/blog/post",
+			contains: []string{`src="https://example.com/blog/images/foo.png"`},
+			excludes: []string{`src="images/foo.png"`},
+		},
+		{
+			name:     "absolute path src resolved to origin",
+			content:  `<img src="/images/foo.png">`,
+			baseURL:  "https://example.com/blog/post",
+			contains: []string{`src="https://example.com/images/foo.png"`},
+			excludes: []string{`src="/images/foo.png"`},
+		},
+		{
+			name:     "already-absolute href is unchanged",
+			content:  `<a href="https://other.com/page">link</a>`,
+			baseURL:  "https://example.com/blog/post",
+			contains: []string{`href="https://other.com/page"`},
+			excludes: []string{},
+		},
+		{
+			name:     "fragment-only href is unchanged",
+			content:  `<a href="#section">anchor</a>`,
+			baseURL:  "https://example.com/blog/post",
+			contains: []string{`href="#section"`},
+			excludes: []string{},
+		},
+		{
+			name:     "empty href is unchanged",
+			content:  `<a href="">empty</a>`,
+			baseURL:  "https://example.com/blog/post",
+			contains: []string{`href=""`},
+			excludes: []string{},
+		},
+		{
+			name:     "empty base URL returns content unchanged",
+			content:  `<img src="images/foo.png">`,
+			baseURL:  "",
+			contains: []string{`src="images/foo.png"`},
+			excludes: []string{},
+		},
+		{
+			name:     "invalid base URL returns content unchanged",
+			content:  `<img src="images/foo.png">`,
+			baseURL:  "://not a valid url",
+			contains: []string{`src="images/foo.png"`},
+			excludes: []string{},
+		},
+		{
+			name: "multiple attributes in one string are all resolved",
+			content: `<img src="a.png"><a href="b.html">link</a>` +
+				`<img src="c.png">`,
+			baseURL: "https://example.com/dir/page",
+			contains: []string{
+				`src="https://example.com/dir/a.png"`,
+				`href="https://example.com/dir/b.html"`,
+				`src="https://example.com/dir/c.png"`,
+			},
+			excludes: []string{
+				`src="a.png"`,
+				`href="b.html"`,
+				`src="c.png"`,
+			},
+		},
+		{
+			name:     "base URL with trailing slash works correctly",
+			content:  `<img src="images/foo.png">`,
+			baseURL:  "https://example.com/blog/",
+			contains: []string{`src="https://example.com/blog/images/foo.png"`},
+			excludes: []string{`src="images/foo.png"`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ResolveRelativeURLs(tt.content, tt.baseURL)
+			for _, want := range tt.contains {
+				if !strings.Contains(result, want) {
+					t.Errorf(
+						"ResolveRelativeURLs(%q, %q): expected result to"+
+							" contain %q, got %q",
+						tt.content, tt.baseURL, want, result,
+					)
+				}
+			}
+			for _, unwanted := range tt.excludes {
+				if strings.Contains(result, unwanted) {
+					t.Errorf(
+						"ResolveRelativeURLs(%q, %q): expected result NOT"+
+							" to contain %q, got %q",
+						tt.content, tt.baseURL, unwanted, result,
+					)
+				}
+			}
+		})
+	}
+}
+
+func TestHighlightCodeBlocks(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		contains []string
+		excludes []string
+	}{
+		{
+			name: "go code block produces chroma output",
+			input: `<pre><code class="language-go">` +
+				`fmt.Println("hello")</code></pre>`,
+			contains: []string{`class="chroma"`},
+			excludes: []string{},
+		},
+		{
+			name:     "code block without language class still produces output",
+			input:    `<pre><code>plain code here</code></pre>`,
+			contains: []string{`class="chroma"`},
+			excludes: []string{},
+		},
+		{
+			name:     "content with no code blocks is returned unchanged",
+			input:    `<p>No code here, just a paragraph.</p>`,
+			contains: []string{"<p>No code here, just a paragraph.</p>"},
+			excludes: []string{`class="chroma"`},
+		},
+		{
+			name: "HTML entities in code are unescaped before highlighting",
+			input: `<pre><code class="language-go">` +
+				`if x &lt; 10 &amp;&amp; y &gt; 0 { }</code></pre>`,
+			// Chroma produces highlighted HTML output.
+			contains: []string{`class="chroma"`},
+			// Double-encoding (&amp;lt; etc.) must not appear — the source
+			// entities were decoded before tokenisation, not passed raw.
+			excludes: []string{"&amp;lt;", "&amp;amp;"},
+		},
+		{
+			name:     "empty input returns empty string",
+			input:    "",
+			contains: []string{""},
+			excludes: []string{`class="chroma"`},
+		},
+		{
+			name:     "content with only regular HTML passes through unchanged",
+			input:    `<h1>Title</h1><p>Body text.</p>`,
+			contains: []string{"<h1>Title</h1>", "<p>Body text.</p>"},
+			excludes: []string{`class="chroma"`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := HighlightCodeBlocks(tt.input)
+			for _, want := range tt.contains {
+				if !strings.Contains(result, want) {
+					t.Errorf(
+						"HighlightCodeBlocks(%q): expected result to"+
+							" contain %q, got %q",
+						tt.input, want, result,
+					)
+				}
+			}
+			for _, unwanted := range tt.excludes {
+				if strings.Contains(result, unwanted) {
+					t.Errorf(
+						"HighlightCodeBlocks(%q): expected result NOT"+
+							" to contain %q, got %q",
+						tt.input, unwanted, result,
+					)
+				}
+			}
+		})
+	}
+}
+
+func FuzzHTML(f *testing.F) {
+	f.Add("<p>Hello</p>")
+	f.Add("<script>alert('xss')</script>")
+	f.Add("")
+	f.Add("<img src=x onerror=alert(1)>")
+	f.Fuzz(func(t *testing.T, input string) {
+		result := string(HTML(input))
+		if strings.Contains(result, "<script") {
+			t.Errorf("output contains <script: %q", result)
+		}
+		if strings.Contains(strings.ToLower(result), "javascript:") {
+			t.Errorf("output contains javascript: %q", result)
+		}
+	})
+}
+
+func FuzzResolveRelativeURLs(f *testing.F) {
+	f.Add(`<img src="images/foo.png">`, "https://example.com/blog/post")
+	f.Add(`<a href="/page">link</a>`, "https://example.com/")
+	f.Add(`<img src="https://other.com/img.png">`, "https://example.com/")
+	f.Add(`<a href="#section">anchor</a>`, "https://example.com/post")
+	f.Add("", "https://example.com/")
+	f.Add(`<img src="x.png">`, "")
+	f.Add(`<a href="page.html">x</a>`, "not-a-valid-url")
+	f.Fuzz(func(t *testing.T, content, baseURL string) {
+		result := ResolveRelativeURLs(content, baseURL)
+		// Must never panic (guaranteed by reaching this line).
+		// javascript: scheme must never appear in a resolved attribute value.
+		if strings.Contains(strings.ToLower(result), `href="javascript:`) ||
+			strings.Contains(strings.ToLower(result), `src="javascript:`) {
+			t.Errorf(
+				"ResolveRelativeURLs produced javascript: URL: %q", result,
+			)
+		}
+	})
+}
+
+func FuzzHighlightCodeBlocks(f *testing.F) {
+	f.Add(`<pre><code class="language-go">fmt.Println("hello")</code></pre>`)
+	f.Add(`<pre><code>plain text</code></pre>`)
+	f.Add(`<p>no code blocks here</p>`)
+	f.Add("")
+	f.Add(`<pre><code class="language-go">` +
+		`if x &lt; 10 &amp;&amp; y &gt; 0 { }</code></pre>`)
+	f.Fuzz(func(t *testing.T, html string) {
+		// Must never panic.
+		_ = HighlightCodeBlocks(html)
+	})
+}

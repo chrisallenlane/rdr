@@ -1,0 +1,389 @@
+{
+  "version": "1.0",
+  "test_command": "make test",
+  "last_updated": "2026-04-09T00:00:00Z",
+  "modules": {
+    "internal/config/config.go": {
+      "status": "completed",
+      "covering_tests": ["internal/config/config_test.go"],
+      "last_tested": "2026-04-09T00:10:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 8, "killed": 8, "survived": 0, "examples": [] },
+        "logical": { "total": 3, "killed": 3, "survived": 0, "examples": [] },
+        "constant": { "total": 9, "killed": 9, "survived": 0, "examples": [] },
+        "statement": { "total": 6, "killed": 6, "survived": 0, "examples": [] },
+        "return": { "total": 1, "killed": 1, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 100.0,
+      "insights": ["All 27 mutations killed including defaultDataPath after adding TestLoad_DefaultDataPathAppendsRdr"]
+    },
+    "internal/database/database.go": {
+      "status": "completed",
+      "covering_tests": ["internal/database/database_test.go"],
+      "last_tested": "2026-04-09T00:20:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 3, "killed": 3, "survived": 0, "examples": [] },
+        "constant": { "total": 7, "killed": 7, "survived": 0, "examples": [] },
+        "statement": { "total": 5, "killed": 2, "survived": 3, "examples": [
+          {"line": 81, "original": "slog.Debug(...)", "mutated": "deleted", "result": "survived", "test_that_caught_it": null},
+          {"line": 96, "original": "_ = tx.Rollback()", "mutated": "deleted", "result": "survived", "test_that_caught_it": null},
+          {"line": 111, "original": "slog.Info(...)", "mutated": "deleted", "result": "survived", "test_that_caught_it": null}
+        ] },
+        "control": { "total": 2, "killed": 2, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 82.4,
+      "insights": ["3 untestable survivors: 2 logging statements and 1 tx.Rollback on error path not observable in tests; parseVersion and MaxOpenConns now covered"]
+    },
+    "internal/discover/discover.go": {
+      "status": "completed",
+      "covering_tests": ["internal/discover/discover_test.go"],
+      "last_tested": "2026-04-09T00:30:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 9, "killed": 9, "survived": 0, "examples": [] },
+        "logical": { "total": 4, "killed": 4, "survived": 0, "examples": [] },
+        "constant": { "total": 7, "killed": 7, "survived": 0, "examples": [] },
+        "statement": { "total": 4, "killed": 2, "survived": 2, "examples": [
+          {"line": 54, "original": "req.Header.Set(\"User-Agent\", ...)", "mutated": "deleted", "result": "survived", "test_that_caught_it": null},
+          {"line": 66, "original": "io.LimitReader(resp.Body, ...)", "mutated": "resp.Body", "result": "survived", "test_that_caught_it": null}
+        ] },
+        "return": { "total": 3, "killed": 3, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 92.6,
+      "insights": ["2 untestable survivors: User-Agent header and LimitReader not observable in unit tests; invalid base URL error path now covered"]
+    },
+    "internal/favicon/favicon.go": {
+      "status": "completed",
+      "covering_tests": ["internal/favicon/favicon_test.go"],
+      "last_tested": "2026-04-09T00:40:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 13, "killed": 12, "survived": 1, "examples": [
+          {"line": 185, "original": "i >= 0", "mutated": "i > 0", "result": "survived", "test_that_caught_it": null}
+        ] },
+        "logical": { "total": 2, "killed": 1, "survived": 1, "examples": [
+          {"line": 72, "original": "&&", "mutated": "||", "result": "survived", "test_that_caught_it": null}
+        ] },
+        "constant": { "total": 4, "killed": 4, "survived": 0, "examples": [] },
+        "arithmetic": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "statement": { "total": 5, "killed": 1, "survived": 4, "examples": [
+          {"line": 86, "original": "slog.Debug(...)", "mutated": "deleted", "result": "survived", "test_that_caught_it": null}
+        ] }
+      },
+      "mutation_score": 76.9,
+      "insights": ["4 logging removals untestable; i>=0 vs i>0 semantically equivalent; boundary tests added for slugifyHost and maxSize"]
+    },
+    "internal/httpclient/httpclient.go": {
+      "status": "completed",
+      "covering_tests": ["internal/httpclient/httpclient_test.go"],
+      "last_tested": "2026-04-09T00:45:00Z",
+      "mutations_by_type": {
+        "constant": { "total": 3, "killed": 3, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 100.0,
+      "insights": ["Trivial module: only constants and a client var, all pinned by existing tests"]
+    },
+    "internal/middleware/auth.go": {
+      "status": "completed",
+      "covering_tests": ["internal/middleware/auth_test.go"],
+      "last_tested": "2026-04-09T00:55:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 7, "killed": 6, "survived": 1, "examples": [
+          {"line": 45, "original": "> datetime('now')", "mutated": ">= datetime('now')", "result": "survived", "test_that_caught_it": null}
+        ] },
+        "logical": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "constant": { "total": 11, "killed": 10, "survived": 1, "examples": [
+          {"line": 14, "original": "\"user\"", "mutated": "\"MUTATED\"", "result": "survived", "test_that_caught_it": null}
+        ] },
+        "statement": { "total": 7, "killed": 7, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 92.6,
+      "insights": ["Session ID removal in WHERE clause now caught; 2 equivalent mutations: context key string and MaxAge -1 vs -2"]
+    },
+    "internal/middleware/security_headers.go": {
+      "status": "completed",
+      "covering_tests": ["internal/middleware/security_headers_test.go"],
+      "last_tested": "2026-04-09T01:00:00Z",
+      "mutations_by_type": {
+        "constant": { "total": 6, "killed": 6, "survived": 0, "examples": [] },
+        "statement": { "total": 3, "killed": 3, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 100.0,
+      "insights": ["Small module fully covered: CSP directives, nosniff, and next handler chain all verified"]
+    },
+    "internal/model/model.go": {
+      "status": "completed",
+      "covering_tests": [],
+      "last_tested": "2026-04-09T01:00:00Z",
+      "mutations_by_type": {},
+      "mutation_score": null,
+      "insights": ["Struct definitions have no logic to mutate; FormatTime/FormatNow tested indirectly"]
+    },
+    "internal/handler/auth.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/auth_test.go"],
+      "last_tested": "2026-04-09T01:15:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 5, "killed": 5, "survived": 0, "examples": [] },
+        "logical": { "total": 3, "killed": 3, "survived": 0, "examples": [] },
+        "constant": { "total": 5, "killed": 5, "survived": 0, "examples": [] },
+        "statement": { "total": 3, "killed": 3, "survived": 0, "examples": [] },
+        "arithmetic": { "total": 1, "killed": 1, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 100.0,
+      "insights": ["Mutator reported 5 false survivors; all verified as killed on re-test. Session expiry direction now verified."]
+    },
+    "internal/handler/feeds.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/feeds_test.go"],
+      "last_tested": "2026-04-09T01:25:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 3, "killed": 3, "survived": 0, "examples": [] },
+        "logical": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "constant": { "total": 8, "killed": 3, "survived": 5, "examples": [
+          {"line": 71, "original": "\"Feed URL is required.\"", "mutated": "\"\"", "result": "survived", "test_that_caught_it": null}
+        ] },
+        "statement": { "total": 8, "killed": 1, "survived": 7, "examples": [
+          {"line": 35, "original": "slog.Error(...)", "mutated": "deleted", "result": "survived", "test_that_caught_it": null}
+        ] }
+      },
+      "mutation_score": 42.9,
+      "insights": ["Low score due to 6 logging removals and 5 error message strings rendered into stub templates; core logic (redirects, DB operations, validation) well tested"]
+    },
+    "internal/handler/items.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/items_test.go"],
+      "last_tested": "2026-04-09T01:35:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 10, "killed": 6, "survived": 4, "examples": [] },
+        "logical": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "constant": { "total": 4, "killed": 4, "survived": 0, "examples": [] },
+        "statement": { "total": 4, "killed": 0, "survived": 4, "examples": [] }
+      },
+      "mutation_score": 60.0,
+      "insights": ["Core buildItemFilter/itemsHeading well tested; survivors are logging removals, query param parsing in handler (stub templates), and > 0 vs >= 0 for always-positive IDs"]
+    },
+    "internal/handler/lists.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/lists_test.go"],
+      "last_tested": "2026-04-09T01:45:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 6, "killed": 6, "survived": 0, "examples": [] },
+        "logical": { "total": 1, "killed": 1, "survived": 0, "examples": [] },
+        "constant": { "total": 4, "killed": 2, "survived": 2, "examples": [] },
+        "statement": { "total": 3, "killed": 0, "survived": 3, "examples": [] }
+      },
+      "mutation_score": 64.3,
+      "insights": ["Survivors: logging removals, error message strings, flash messages, ORDER BY direction — all stub-template limitations"]
+    },
+    "internal/handler/list_detail.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/list_detail_test.go"],
+      "last_tested": "2026-04-09T02:00:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 15, "killed": 14, "survived": 1, "examples": [] },
+        "logical": { "total": 2, "killed": 2, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 94.1,
+      "insights": ["Excellent coverage; only survivor is parseTime nil check (t != nil → t == nil)"]
+    },
+    "internal/handler/item_detail.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/item_detail_test.go"],
+      "last_tested": "2026-04-09T02:00:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 8, "killed": 5, "survived": 3, "examples": [] },
+        "logical": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "constant": { "total": 4, "killed": 2, "survived": 2, "examples": [] },
+        "statement": { "total": 3, "killed": 0, "survived": 3, "examples": [] }
+      },
+      "mutation_score": 52.9,
+      "insights": ["Survivors in content sanitization pipeline, prev/next navigation, template name, and parseTime nil checks — all stub-template limitations"]
+    },
+    "internal/handler/item_star.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/item_star_test.go"],
+      "last_tested": "2026-04-09T01:45:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 5, "killed": 5, "survived": 0, "examples": [] },
+        "arithmetic": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "constant": { "total": 5, "killed": 3, "survived": 2, "examples": [] },
+        "logical": { "total": 1, "killed": 1, "survived": 0, "examples": [] },
+        "statement": { "total": 2, "killed": 0, "survived": 2, "examples": [] }
+      },
+      "mutation_score": 73.3,
+      "insights": ["Core toggle logic and access control well tested; survivors are logging removals and redirect fallback path"]
+    },
+    "internal/handler/search.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/search_test.go"],
+      "last_tested": "2026-04-09T02:00:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 5, "killed": 1, "survived": 4, "examples": [] },
+        "statement": { "total": 2, "killed": 0, "survived": 2, "examples": [] }
+      },
+      "mutation_score": 14.3,
+      "insights": ["Very low score; stub templates prevent verifying rendered data; error path flips survive because renderSearchErr returns 200"]
+    },
+    "internal/handler/theme.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/theme_test.go"],
+      "last_tested": "2026-04-09T01:45:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 1, "killed": 1, "survived": 0, "examples": [] },
+        "logical": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "constant": { "total": 11, "killed": 9, "survived": 2, "examples": [
+          {"line": 49, "original": "31536000", "mutated": "0", "result": "survived", "test_that_caught_it": null}
+        ] },
+        "statement": { "total": 1, "killed": 1, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 86.7,
+      "insights": ["Excellent coverage; only MaxAge cookie value untested (functionally irrelevant)"]
+    },
+    "internal/handler/opml.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/opml_test.go"],
+      "last_tested": "2026-04-09T02:10:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 22, "killed": 22, "survived": 0, "examples": [] },
+        "constant": { "total": 3, "killed": 1, "survived": 2, "examples": [] },
+        "arithmetic": { "total": 2, "killed": 1, "survived": 1, "examples": [] },
+        "statement": { "total": 1, "killed": 1, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 89.3,
+      "insights": ["Strong coverage; survivors: OPML version string, maxSize half-size, and >= 0 tautology"]
+    },
+    "internal/handler/sync.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/sync_test.go"],
+      "last_tested": "2026-04-09T02:15:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "logical": { "total": 1, "killed": 1, "survived": 0, "examples": [] },
+        "constant": { "total": 4, "killed": 4, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 100.0,
+      "insights": ["Tiny module fully covered: flash messages, redirects, nil func handling all tested"]
+    },
+    "internal/handler/favicons.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/favicons_test.go"],
+      "last_tested": "2026-04-09T02:15:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 3, "killed": 3, "survived": 0, "examples": [] },
+        "constant": { "total": 3, "killed": 3, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 100.0,
+      "insights": ["Slug validation, glob fallback, and cache-control header all well tested"]
+    },
+    "internal/handler/server.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/server_test.go"],
+      "last_tested": "2026-04-09T02:15:00Z",
+      "mutations_by_type": {},
+      "mutation_score": null,
+      "insights": ["Server construction, template parsing, and render tested indirectly through all handler tests"]
+    },
+    "internal/handler/query_helpers.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/query_helpers_test.go"],
+      "last_tested": "2026-04-09T02:30:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 10, "killed": 10, "survived": 0, "examples": [] },
+        "logical": { "total": 3, "killed": 3, "survived": 0, "examples": [] },
+        "constant": { "total": 4, "killed": 4, "survived": 0, "examples": [] },
+        "statement": { "total": 4, "killed": 2, "survived": 2, "examples": [
+          {"line": 77, "original": "defer rows.Close()", "mutated": "deleted", "result": "survived", "test_that_caught_it": null}
+        ] }
+      },
+      "mutation_score": 90.5,
+      "insights": ["sqlBool nil case now covered; survivors are defer rows.Close() removals (resource cleanup)"]
+    },
+    "internal/handler/request_helpers.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/request_helpers_test.go"],
+      "last_tested": "2026-04-09T02:30:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 19, "killed": 18, "survived": 1, "examples": [
+          {"line": 58, "original": "id <= 0", "mutated": "id < 0", "result": "survived", "test_that_caught_it": null}
+        ] },
+        "logical": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "constant": { "total": 2, "killed": 1, "survived": 1, "examples": [] },
+        "arithmetic": { "total": 3, "killed": 3, "survived": 0, "examples": [] }
+      },
+      "mutation_score": 92.3,
+      "insights": ["Excellent coverage; id<=0 vs id<0 is semantically equivalent; itemsPerPage constant not pinned"]
+    },
+    "internal/handler/template_funcs.go": {
+      "status": "completed",
+      "covering_tests": ["internal/handler/server_test.go"],
+      "last_tested": "2026-04-09T02:40:00Z",
+      "mutations_by_type": {
+        "arithmetic": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "relational": { "total": 10, "killed": 7, "survived": 3, "examples": [] },
+        "logical": { "total": 2, "killed": 2, "survived": 0, "examples": [] },
+        "constant": { "total": 3, "killed": 2, "survived": 1, "examples": [] },
+        "statement": { "total": 3, "killed": 2, "survived": 1, "examples": [] }
+      },
+      "mutation_score": 75.0,
+      "insights": ["timeAgo boundaries untestable without time injection; hasFavicon not directly tested"]
+    },
+    "internal/poller/poller.go": {
+      "status": "completed",
+      "covering_tests": ["internal/poller/poller_test.go"],
+      "last_tested": "2026-04-09T03:00:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 5, "killed": 5, "survived": 0, "examples": [] },
+        "constant": { "total": 1, "killed": 1, "survived": 0, "examples": [] },
+        "statement": { "total": 2, "killed": 0, "survived": 2, "examples": [] }
+      },
+      "mutation_score": 75.0,
+      "insights": ["Concurrency, shutdown, and sync flag well tested; survivors are logging removals"]
+    },
+    "internal/poller/feed.go": {
+      "status": "completed",
+      "covering_tests": ["internal/poller/feed_test.go"],
+      "last_tested": "2026-04-09T03:00:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 11, "killed": 8, "survived": 3, "examples": [] },
+        "constant": { "total": 3, "killed": 3, "survived": 0, "examples": [] },
+        "statement": { "total": 3, "killed": 0, "survived": 3, "examples": [] }
+      },
+      "mutation_score": 64.7,
+      "insights": ["itemGUID and itemPublishedAt well tested; FetchAndStoreFeed integration paths have gaps in content fallback and favicon fetching"]
+    },
+    "internal/poller/retention.go": {
+      "status": "completed",
+      "covering_tests": ["internal/poller/retention_test.go"],
+      "last_tested": "2026-04-09T03:00:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 5, "killed": 3, "survived": 2, "examples": [] },
+        "constant": { "total": 3, "killed": 3, "survived": 0, "examples": [] },
+        "arithmetic": { "total": 1, "killed": 1, "survived": 0, "examples": [] },
+        "statement": { "total": 6, "killed": 1, "survived": 5, "examples": [] }
+      },
+      "mutation_score": 53.3,
+      "insights": ["PruneOldItems and CleanExpiredSessions public APIs well tested; runRetention wrapper untested (logging only); datetime direction now tested"]
+    },
+    "internal/sanitize/sanitize.go": {
+      "status": "completed",
+      "covering_tests": ["internal/sanitize/sanitize_test.go"],
+      "last_tested": "2026-04-09T03:00:00Z",
+      "mutations_by_type": {
+        "relational": { "total": 8, "killed": 8, "survived": 0, "examples": [] },
+        "logical": { "total": 7, "killed": 5, "survived": 2, "examples": [] },
+        "constant": { "total": 4, "killed": 3, "survived": 1, "examples": [] },
+        "statement": { "total": 1, "killed": 1, "survived": 0, "examples": [] },
+        "arithmetic": { "total": 1, "killed": 0, "survived": 1, "examples": [] }
+      },
+      "mutation_score": 81.0,
+      "insights": ["Good coverage; survivors in URL path resolution edge cases and lexer language fallback"]
+    }
+  },
+  "global_statistics": {
+    "total_modules": 28,
+    "completed_modules": 28,
+    "total_mutations": 481,
+    "total_killed": 389,
+    "total_survived": 92,
+    "overall_score": 80.9
+  }
+}

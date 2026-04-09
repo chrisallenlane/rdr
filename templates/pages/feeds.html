@@ -1,0 +1,74 @@
+{{define "title"}}Feeds — rdr{{end}}
+{{define "content"}}
+<h1>Feeds</h1>
+
+<div class="feeds-actions">
+    <form method="post" action="/feeds">
+        <fieldset role="group">
+            <input type="url" name="url" aria-label="Feed URL" placeholder="https://example.com" required>
+            <button type="submit">Add Feed</button>
+        </fieldset>
+    </form>
+    <form method="post" action="/feeds/sync" class="sync-form">
+        <button type="submit" class="sync-button" aria-label="Sync all feeds"><span class="sync-icon">⟳</span> Sync Now</button>
+    </form>
+</div>
+
+{{if .Content.Error}}
+<p><mark>{{.Content.Error}}</mark></p>
+{{end}}
+
+<form method="post" action="/feeds/import" enctype="multipart/form-data">
+    <fieldset role="group">
+        <input type="file" name="opml" aria-label="OPML file" accept=".opml,.xml" required>
+        <button type="submit">Import OPML</button>
+        <a href="/feeds/export" role="button">Export OPML</a>
+    </fieldset>
+</form>
+
+{{if .Content.Feeds}}
+<table>
+    <thead>
+        <tr>
+            <th>Feed</th>
+            <th>Items</th>
+            <th>Last Fetched</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Content.Feeds}}
+        <tr>
+            <td>
+                <a href="/items?feed={{.ID}}">{{feedName .}}</a>
+                <br><small>{{.URL}}</small>
+            </td>
+            <td>{{.ItemCount}}</td>
+            <td>
+                {{- if .LastFetchedAt -}}
+                    {{- if .LastFetchError -}}
+                        <span class="health-failing" title="{{.LastFetchError}}">✗ {{.LastFetchError}} ({{timeAgo .LastFetchedAt}})</span>
+                    {{- else -}}
+                        <span class="health-ok">✓ {{timeAgo .LastFetchedAt}}</span>
+                    {{- end -}}
+                {{- else -}}
+                    {{- if .LastFetchError -}}
+                        <span class="health-failing" title="{{.LastFetchError}}">✗ {{.LastFetchError}}</span>
+                    {{- else -}}
+                        <span class="health-pending">— Awaiting first fetch</span>
+                    {{- end -}}
+                {{- end -}}
+            </td>
+            <td>
+                <form method="post" action="/feeds/{{.ID}}/delete">
+                    <button type="submit" aria-label="Remove {{feedName .}}">Remove</button>
+                </form>
+            </td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{else}}
+<p>No feeds yet. Add your first feed above.</p>
+{{end}}
+{{end}}

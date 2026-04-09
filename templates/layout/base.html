@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{.Theme}}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{block "title" .}}rdr{{end}}</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/css/app.css">
+    <link rel="stylesheet" href="/static/css/syntax.css">
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <header>
+        <nav>
+            <ul>
+                <li><strong><a href="/items" class="logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><circle cx="3" cy="13" r="2"/><path d="M1 8.5a6.5 6.5 0 0 1 6.5 6.5h-3A3.5 3.5 0 0 0 1 11.5z"/><path d="M1 3.5A11.5 11.5 0 0 1 12.5 15h-3A8.5 8.5 0 0 0 1 6.5z"/></svg> rdr</a></strong></li>
+            </ul>
+            <ul>
+                {{if .User}}
+                <li><a href="/items">Items</a></li>
+                <li><a href="/feeds">Feeds</a></li>
+                <li><a href="/lists">Lists</a></li>
+                <li><a href="/search">Search</a></li>
+                {{end}}
+                <li>
+                    <form method="post" action="/theme">
+                        <select name="theme" aria-label="Theme">
+                            <option value="auto" {{if eq .Theme "auto"}}selected{{end}}>Auto</option>
+                            <option value="solarized-light" {{if eq .Theme "solarized-light"}}selected{{end}}>Solarized Light</option>
+                            <option value="solarized-dark" {{if eq .Theme "solarized-dark"}}selected{{end}}>Solarized Dark</option>
+                            <option value="modus-light" {{if eq .Theme "modus-light"}}selected{{end}}>Modus Light</option>
+                            <option value="modus-dark" {{if eq .Theme "modus-dark"}}selected{{end}}>Modus Dark</option>
+                        </select>
+                        <button type="submit" class="sr-only">Apply</button>
+                    </form>
+                </li>
+                {{if .User}}
+                <li>
+                    <form method="post" action="/logout">
+                        <button type="submit">Logout</button>
+                    </form>
+                </li>
+                {{end}}
+            </ul>
+        </nav>
+    </header>
+    <main id="main-content" tabindex="-1">
+        <a name="main-content"></a>
+        {{if .Flash}}
+        <p role="alert">{{.Flash}}</p>
+        {{end}}
+        {{block "content" .}}{{end}}
+    </main>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
