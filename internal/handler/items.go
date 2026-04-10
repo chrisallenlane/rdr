@@ -26,35 +26,23 @@ type itemsPageData struct {
 	Lists         []model.List // for sidebar filter links
 }
 
-func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
-	user := middleware.UserFromContext(r.Context())
+// queryItemsPageData builds the full itemsPageData for the given filters.
+func (s *Server) queryItemsPageData(
+	userID int64, page int,
+	filterFeed, filterList int64,
+	filterUnread, filterStarred bool,
+) (itemsPageData, error) {
+	where, args := buildItemFilter(userID, filterFeed, filterList, filterUnread, filterStarred)
 
-	// Parse query parameters.
-	page := pageFromQuery(r)
-
-	filterFeed := parsePositiveInt64(r.URL.Query().Get("feed"))
-	filterList := parsePositiveInt64(r.URL.Query().Get("list"))
-	filterUnread := r.URL.Query().Get("unread") == "1"
-	filterStarred := r.URL.Query().Get("starred") == "1"
-
-	// Build WHERE clauses.
-	where, args := buildItemFilter(
-		user.ID, filterFeed, filterList, filterUnread, filterStarred,
-	)
-
-	// Query total count.
 	countQuery := "SELECT COUNT(*) FROM items i JOIN feeds f ON i.feed_id = f.id WHERE " + where
 	var totalItems int
 	if err := s.db.QueryRow(countQuery, args...).Scan(&totalItems); err != nil {
-		slog.Error("counting items", "error", err)
-		s.renderInternalError(w, r)
-		return
+		return itemsPageData{}, fmt.Errorf("counting items: %w", err)
 	}
 
 	var totalPages, offset int
 	page, totalPages, offset = paginate(totalItems, itemsPerPage, page)
 
-	// Query items.
 	itemQuery := `SELECT i.id, i.feed_id, i.title, i.url, i.published_at, i.read,
 	                     i.starred,
 	                     f.title AS feed_title, f.site_url AS feed_site_url,
@@ -68,9 +56,7 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.db.Query(itemQuery, itemArgs...)
 	if err != nil {
-		slog.Error("querying items", "error", err)
-		s.renderInternalError(w, r)
-		return
+		return itemsPageData{}, fmt.Errorf("querying items: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -84,9 +70,7 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 			&read, &starred,
 			&item.FeedTitle, &item.FeedSiteURL, &item.FeedURL,
 		); err != nil {
-			slog.Error("scanning item row", "error", err)
-			s.renderInternalError(w, r)
-			return
+			return itemsPageData{}, fmt.Errorf("scanning item: %w", err)
 		}
 		item.PublishedAt = parseTime(publishedAt)
 		item.Read = bool(read)
@@ -94,57 +78,64 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		slog.Error("iterating item rows", "error", err)
-		s.renderInternalError(w, r)
-		return
+		return itemsPageData{}, fmt.Errorf("iterating items: %w", err)
 	}
 
-	// Query user's feeds and lists for the sidebar.
-	feeds, err := queryUserFeeds(s.db, user.ID)
+	feeds, err := queryUserFeeds(s.db, userID)
 	if err != nil {
-		slog.Error("querying feeds for sidebar", "error", err)
-		s.renderInternalError(w, r)
-		return
+		return itemsPageData{}, fmt.Errorf("querying feeds: %w", err)
 	}
 
-	lists, err := queryUserLists(s.db, user.ID)
+	lists, err := queryUserLists(s.db, userID)
 	if err != nil {
-		slog.Error("querying lists for sidebar", "error", err)
-		s.renderInternalError(w, r)
-		return
+		return itemsPageData{}, fmt.Errorf("querying lists: %w", err)
 	}
 
 	heading := itemsHeading(filterFeed, filterList, feeds, lists)
 
-	// Query unread count (with same feed/list filters, but always unread).
-	unreadWhere, unreadArgs := buildItemFilter(
-		user.ID, filterFeed, filterList, true, false,
-	)
-
+	unreadWhere, unreadArgs := buildItemFilter(userID, filterFeed, filterList, true, false)
 	var unreadCount int
-	unreadQuery := "SELECT COUNT(*) FROM items i JOIN feeds f ON i.feed_id = f.id WHERE " + unreadWhere
-	if err := s.db.QueryRow(unreadQuery, unreadArgs...).Scan(&unreadCount); err != nil {
-		slog.Error("counting unread items", "error", err)
+	if err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM items i JOIN feeds f ON i.feed_id = f.id WHERE "+unreadWhere,
+		unreadArgs...,
+	).Scan(&unreadCount); err != nil {
+		return itemsPageData{}, fmt.Errorf("counting unread: %w", err)
+	}
+
+	return itemsPageData{
+		Items:         items,
+		TotalItems:    totalItems,
+		UnreadCount:   unreadCount,
+		Page:          page,
+		TotalPages:    totalPages,
+		Heading:       heading,
+		FilterFeed:    filterFeed,
+		FilterList:    filterList,
+		FilterUnread:  filterUnread,
+		FilterStarred: filterStarred,
+		Feeds:         feeds,
+		Lists:         lists,
+	}, nil
+}
+
+func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+
+	data, err := s.queryItemsPageData(
+		user.ID,
+		pageFromQuery(r),
+		parsePositiveInt64(r.URL.Query().Get("feed")),
+		parsePositiveInt64(r.URL.Query().Get("list")),
+		r.URL.Query().Get("unread") == "1",
+		r.URL.Query().Get("starred") == "1",
+	)
+	if err != nil {
+		slog.Error("querying items", "error", err)
 		s.renderInternalError(w, r)
 		return
 	}
 
-	s.render(w, r, "items.html", PageData{
-		Content: itemsPageData{
-			Items:         items,
-			TotalItems:    totalItems,
-			UnreadCount:   unreadCount,
-			Page:          page,
-			TotalPages:    totalPages,
-			Heading:       heading,
-			FilterFeed:    filterFeed,
-			FilterList:    filterList,
-			FilterUnread:  filterUnread,
-			FilterStarred: filterStarred,
-			Feeds:         feeds,
-			Lists:         lists,
-		},
-	})
+	s.render(w, r, "items.html", PageData{Content: data})
 }
 
 func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
@@ -186,6 +177,18 @@ func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("getting rows affected", "error", err)
 		s.renderInternalError(w, r)
+		return
+	}
+
+	if isHTMXRequest(r) {
+		data, err := s.queryItemsPageData(user.ID, 1, filterFeed, filterList, false, false)
+		if err != nil {
+			slog.Error("querying items for HTMX", "error", err)
+			s.renderInternalError(w, r)
+			return
+		}
+		flash(w, r, fmt.Sprintf("Marked %d items as read.", affected))
+		s.renderFragment(w, "items_section.html", data)
 		return
 	}
 

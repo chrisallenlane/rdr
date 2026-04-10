@@ -36,6 +36,7 @@ var testTemplateFS = fstest.MapFS{
 	"templates/fragments/list_detail_feeds.html": {Data: []byte(`<section id="feeds-in-list">{{range .InList}}{{.ID}}{{end}}</section>`)},
 	"templates/fragments/lists_table.html":       {Data: []byte(`<div id="lists-table">{{range .}}{{.Name}}{{end}}</div>`)},
 	"templates/fragments/feeds_table.html":       {Data: []byte(`<div id="feeds-table">{{range .}}{{.URL}}{{end}}</div>`)},
+	"templates/fragments/items_section.html":     {Data: []byte(`<section id="items-section">{{.Heading}}</section>`)},
 }
 
 // newTestServer creates a *Server backed by an in-memory SQLite database and

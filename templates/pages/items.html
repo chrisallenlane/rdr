@@ -4,7 +4,7 @@
     <aside>
         <div class="sidebar-header">
             <a href="/items"{{if not (or .Content.FilterFeed .Content.FilterList)}} aria-current="true"{{end}}>All Items</a>
-            <form method="post" action="/feeds/sync" class="inline-form sync-form">
+            <form method="post" action="/feeds/sync" class="inline-form sync-form" hx-post="/feeds/sync" hx-swap="none">
                 <button type="submit" class="sync-button" aria-label="Sync all feeds" title="Sync all feeds"><span class="sync-icon">⟳</span></button>
             </form>
         </div>
@@ -27,11 +27,11 @@
         </details>
         {{end}}
     </aside>
-    <section>
+    <section id="items-section">
         <div class="items-header">
             <h1>{{.Content.Heading}}</h1>
             <nav>
-                {{- if .Content.Items}}{{if gt .Content.UnreadCount 0}} <form method="post" action="/items/mark-read" class="inline-form">{{if .Content.FilterFeed}}<input type="hidden" name="feed" value="{{.Content.FilterFeed}}">{{end}}{{if .Content.FilterList}}<input type="hidden" name="list" value="{{.Content.FilterList}}">{{end}}[ <button type="submit" class="link-button">mark all as read</button> ]</form>{{end}}{{end}}
+                {{- if .Content.Items}}{{if gt .Content.UnreadCount 0}} <form method="post" action="/items/mark-read" class="inline-form" hx-post="/items/mark-read" hx-target="#items-section" hx-swap="outerHTML">{{if .Content.FilterFeed}}<input type="hidden" name="feed" value="{{.Content.FilterFeed}}">{{end}}{{if .Content.FilterList}}<input type="hidden" name="list" value="{{.Content.FilterList}}">{{end}}[ <button type="submit" class="link-button">mark all as read</button> ]</form>{{end}}{{end}}
                 {{- if not .Content.FilterUnread}} [ <a href="/items?unread=1{{if .Content.FilterFeed}}&feed={{.Content.FilterFeed}}{{end}}{{if .Content.FilterList}}&list={{.Content.FilterList}}{{end}}">unread only</a> ]{{end}}
                 {{- if not .Content.FilterStarred}} [ <a href="/items?starred=1{{if .Content.FilterFeed}}&feed={{.Content.FilterFeed}}{{end}}{{if .Content.FilterList}}&list={{.Content.FilterList}}{{end}}">starred only</a> ]{{end}}
                 {{- if or .Content.FilterFeed .Content.FilterUnread .Content.FilterStarred .Content.FilterList}} [ <a href="/items">clear filters</a> ]{{end}}
