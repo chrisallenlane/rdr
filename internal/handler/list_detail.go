@@ -153,6 +153,11 @@ func (s *Server) handleRenameList(w http.ResponseWriter, r *http.Request) {
 
 	name := strings.TrimSpace(r.FormValue("name"))
 	if name == "" {
+		if isHTMXRequest(r) {
+			flash(w, r, "List name is required.")
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			return
+		}
 		setFlash(w, "List name is required.")
 		http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
 		return
@@ -164,12 +169,26 @@ func (s *Server) handleRenameList(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
+			if isHTMXRequest(r) {
+				flash(w, r, "A list with that name already exists.")
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				return
+			}
 			setFlash(w, "A list with that name already exists.")
 			http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
 			return
 		}
 		slog.Error("renaming list", "error", err)
 		s.renderInternalError(w, r)
+		return
+	}
+
+	if isHTMXRequest(r) {
+		setHTMXTriggers(w, htmxTriggers{
+			"showFlash":    "List renamed.",
+			"setPageTitle": name + " — rdr",
+		})
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 

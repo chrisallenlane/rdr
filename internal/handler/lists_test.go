@@ -241,6 +241,78 @@ func TestHandleRenameList(t *testing.T) {
 		}
 	})
 
+	t.Run("HTMX valid rename returns 204 with triggers", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		result, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			userID, "Old Name",
+		)
+		if err != nil {
+			t.Fatalf("inserting list: %v", err)
+		}
+		listID, _ := result.LastInsertId()
+
+		form := url.Values{"name": {"New Name"}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/rename", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNoContent {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNoContent)
+		}
+		trigger := rec.Header().Get("HX-Trigger")
+		if !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
+		}
+		if !strings.Contains(trigger, "setPageTitle") {
+			t.Errorf("HX-Trigger = %q, want to contain setPageTitle", trigger)
+		}
+	})
+
+	t.Run("HTMX empty name returns 422 with flash", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		result, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			userID, "My List",
+		)
+		if err != nil {
+			t.Fatalf("inserting list: %v", err)
+		}
+		listID, _ := result.LastInsertId()
+
+		form := url.Values{"name": {"  "}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/rename", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
+		}
+	})
+
 	t.Run("non-existent list", func(t *testing.T) {
 		s := newTestServer(t)
 		userID := createTestUser(t, s, "testuser", "testpass1")

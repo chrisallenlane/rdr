@@ -154,25 +154,6 @@
   }
 
 
-  // --- Rename form: submit via fetch to avoid history pollution ---
-  function initRenameForms() {
-    var forms = document.querySelectorAll(".rename-form");
-    forms.forEach(function (form) {
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        var input = form.querySelector('input[name="name"]');
-        if (!input) return;
-        fetch(form.action, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: "name=" + encodeURIComponent(input.value),
-        }).then(function (res) {
-          if (!res.ok) return;
-          document.title = input.value + " — rdr";
-        });
-      });
-    });
-  }
 
   // --- Keyboard shortcuts help overlay (? to toggle) ---
   function initShortcutsHelp() {
@@ -260,6 +241,11 @@
     });
   }
 
+  // --- HTMX: update page title sent via HX-Trigger ---
+  document.body.addEventListener("setPageTitle", function (e) {
+    document.title = e.detail.value;
+  });
+
   // --- HTMX: apply theme change sent via HX-Trigger ---
   document.body.addEventListener("setTheme", function (e) {
     document.documentElement.setAttribute("data-theme", e.detail.value);
@@ -285,6 +271,5 @@
   initSidebar();
   initThemeSelect();
   initSyncButtons();
-  initRenameForms();
   initShortcutsHelp();
 })();
