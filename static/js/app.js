@@ -3,6 +3,12 @@
 (function () {
   "use strict";
 
+  // Reload when restored from bfcache (back/forward navigation) so
+  // read/unread state is up-to-date on the items page.
+  window.addEventListener("pageshow", function (e) {
+    if (e.persisted) window.location.reload();
+  });
+
   // Ignore keypresses inside form controls.
   function inInput(e) {
     var tag = e.target.tagName;
