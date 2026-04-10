@@ -11,6 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Login to Gitea registry
+        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login gitea.nas.lab.chris-allen-lane.com -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
+
       - name: Build and push
         run: |
           docker build \
