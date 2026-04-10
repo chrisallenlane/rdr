@@ -106,6 +106,48 @@ func TestHandleCreateList(t *testing.T) {
 			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
 	})
+
+	t.Run("HTMX create returns fragment", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		form := url.Values{"name": {"New List"}}
+		req := authedRequest(t, s, userID, http.MethodPost, "/lists")
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
+		}
+		if !strings.Contains(rec.Body.String(), "New List") {
+			t.Errorf("body should contain new list name")
+		}
+	})
+
+	t.Run("HTMX empty name returns 422", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		form := url.Values{"name": {""}}
+		req := authedRequest(t, s, userID, http.MethodPost, "/lists")
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+		}
+	})
 }
 
 func TestHandleRenameList(t *testing.T) {
@@ -434,6 +476,37 @@ func TestHandleDeleteList(t *testing.T) {
 
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("HTMX delete returns fragment", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		result, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			userID, "Doomed List",
+		)
+		if err != nil {
+			t.Fatalf("inserting list: %v", err)
+		}
+		listID, _ := result.LastInsertId()
+
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/delete", listID),
+		)
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
 		}
 	})
 }

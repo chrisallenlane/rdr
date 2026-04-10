@@ -241,6 +241,13 @@
     });
   }
 
+  // --- HTMX: reset forms with data-reset-on-success after successful submit ---
+  document.body.addEventListener("htmx:afterRequest", function (e) {
+    if (e.detail.successful && e.detail.elt.hasAttribute("data-reset-on-success")) {
+      e.detail.elt.reset();
+    }
+  });
+
   // --- HTMX: update page title sent via HX-Trigger ---
   document.body.addEventListener("setPageTitle", function (e) {
     document.title = e.detail.value;
