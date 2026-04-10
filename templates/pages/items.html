@@ -1,4 +1,4 @@
-{{define "title"}}{{.Content.Heading}} — rdr{{end}}
+{{define "title"}}{{.Content.Heading}} - rdr{{end}}
 {{define "content"}}
 <div class="items-layout">
     <aside>
@@ -27,37 +27,6 @@
         </details>
         {{end}}
     </aside>
-    <section id="items-section">
-        <div class="items-header">
-            <h1>{{.Content.Heading}}</h1>
-            <nav>
-                {{- if .Content.Items}}{{if gt .Content.UnreadCount 0}} <form method="post" action="/items/mark-read" class="inline-form" hx-post="/items/mark-read" hx-target="#items-section" hx-swap="outerHTML">{{if .Content.FilterFeed}}<input type="hidden" name="feed" value="{{.Content.FilterFeed}}">{{end}}{{if .Content.FilterList}}<input type="hidden" name="list" value="{{.Content.FilterList}}">{{end}}[ <button type="submit" class="link-button">mark all as read</button> ]</form>{{end}}{{end}}
-                {{- if not .Content.FilterUnread}} [ <a href="/items?unread=1{{if .Content.FilterFeed}}&feed={{.Content.FilterFeed}}{{end}}{{if .Content.FilterList}}&list={{.Content.FilterList}}{{end}}">unread only</a> ]{{end}}
-                {{- if not .Content.FilterStarred}} [ <a href="/items?starred=1{{if .Content.FilterFeed}}&feed={{.Content.FilterFeed}}{{end}}{{if .Content.FilterList}}&list={{.Content.FilterList}}{{end}}">starred only</a> ]{{end}}
-                {{- if or .Content.FilterFeed .Content.FilterUnread .Content.FilterStarred .Content.FilterList}} [ <a href="/items">clear filters</a> ]{{end}}
-            </nav>
-        </div>
-        {{if .Content.Items}}
-        {{range .Content.Items}}
-        <article>
-            <p>
-                {{if not .Read}}<strong>{{end}}
-                <a href="/items/{{.ID}}">{{if hasFavicon (faviconSlug .)}}<img src="/favicons/{{faviconSlug .}}" alt="" class="feed-icon" width="16" height="16">{{end}}{{if .Title}}{{.Title}}{{else}}(untitled){{end}}</a>
-                {{if not .Read}}</strong><span class="sr-only">(unread)</span>{{end}}
-            </p>
-            <small class="item-meta">{{itemFeedName .}}{{if .PublishedAt}} · {{timeAgo .PublishedAt}}{{end}}</small>
-        </article>
-        {{end}}
-
-        {{/* Pagination */}}
-        <nav aria-label="Pagination">
-            {{if gt .Content.Page 1}}<a href="/items?page={{subtract .Content.Page 1}}{{if .Content.FilterFeed}}&feed={{.Content.FilterFeed}}{{end}}{{if .Content.FilterUnread}}&unread=1{{end}}{{if .Content.FilterStarred}}&starred=1{{end}}{{if .Content.FilterList}}&list={{.Content.FilterList}}{{end}}" aria-label="Newer page">← Newer</a>{{end}}
-            <span>Page {{.Content.Page}} of {{.Content.TotalPages}}</span>
-            {{if lt .Content.Page .Content.TotalPages}}<a href="/items?page={{add .Content.Page 1}}{{if .Content.FilterFeed}}&feed={{.Content.FilterFeed}}{{end}}{{if .Content.FilterUnread}}&unread=1{{end}}{{if .Content.FilterStarred}}&starred=1{{end}}{{if .Content.FilterList}}&list={{.Content.FilterList}}{{end}}" aria-label="Older page">Older →</a>{{end}}
-        </nav>
-        {{else}}
-        <p>No items yet. <a href="/feeds">Add some feeds</a> to get started.</p>
-        {{end}}
-    </section>
+    {{template "items_section" .Content}}
 </div>
 {{end}}

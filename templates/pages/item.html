@@ -1,4 +1,4 @@
-{{define "title"}}{{.Content.Item.Title}} — rdr{{end}}
+{{define "title"}}{{.Content.Item.Title}} - rdr{{end}}
 {{define "content"}}
 <article>
     <header>
@@ -6,7 +6,7 @@
         <small class="item-meta">
             {{if .Content.Item.FeedSiteURL}}<a href="{{.Content.Item.FeedSiteURL}}" target="_blank" rel="nofollow noopener">{{itemFeedName .Content.Item}}</a>{{else}}{{itemFeedName .Content.Item}}{{end}}
             {{if .Content.Item.PublishedAt}} · {{timeAgo .Content.Item.PublishedAt}}{{end}}
-            · <form method="post" action="/items/{{.Content.Item.ID}}/star" class="inline-form" hx-post="/items/{{.Content.Item.ID}}/star" hx-target="this" hx-swap="outerHTML"><button type="submit" class="link-button star-button" aria-label="{{if .Content.Item.Starred}}Unstar{{else}}Star{{end}} this item">{{if .Content.Item.Starred}}★{{else}}☆{{end}}</button></form>
+            · {{template "star_button" .Content.Item}}
         </small>
     </header>
 

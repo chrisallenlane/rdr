@@ -1,4 +1,4 @@
-{{define "title"}}Feeds — rdr{{end}}
+{{define "title"}}Feeds - rdr{{end}}
 {{define "content"}}
 <h1>Feeds</h1>
 
@@ -37,54 +37,5 @@
     </fieldset>
 </form>
 
-<div id="feeds-table">
-{{if .Content.Feeds}}
-<table>
-    <thead>
-        <tr>
-            <th>Feed</th>
-            <th>Items</th>
-            <th>Last Fetched</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {{range .Content.Feeds}}
-        <tr>
-            <td>
-                <a href="/items?feed={{.ID}}">{{feedName .}}</a>
-                <br><small>{{.URL}}</small>
-            </td>
-            <td>{{.ItemCount}}</td>
-            <td>
-                {{- if .LastFetchedAt -}}
-                    {{- if .LastFetchError -}}
-                        <span class="health-failing" title="{{.LastFetchError}}">✗ {{.LastFetchError}} ({{timeAgo .LastFetchedAt}})</span>
-                    {{- else -}}
-                        <span class="health-ok">✓ {{timeAgo .LastFetchedAt}}</span>
-                    {{- end -}}
-                {{- else -}}
-                    {{- if .LastFetchError -}}
-                        <span class="health-failing" title="{{.LastFetchError}}">✗ {{.LastFetchError}}</span>
-                    {{- else -}}
-                        <span class="health-pending">— Awaiting first fetch</span>
-                    {{- end -}}
-                {{- end -}}
-            </td>
-            <td>
-                <form method="post" action="/feeds/{{.ID}}/delete"
-                      hx-post="/feeds/{{.ID}}/delete"
-                      hx-target="#feeds-table"
-                      hx-swap="outerHTML">
-                    <button type="submit" aria-label="Remove {{feedName .}}">Remove</button>
-                </form>
-            </td>
-        </tr>
-        {{end}}
-    </tbody>
-</table>
-{{else}}
-<p>No feeds yet. Add your first feed above.</p>
-{{end}}
-</div>
+{{template "feeds_table" .Content.Feeds}}
 {{end}}

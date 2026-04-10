@@ -21,6 +21,19 @@ type feedsPageData struct {
 	Error string
 }
 
+// renderFeedsTableFragment queries the user's feeds and renders the
+// feeds_table fragment. It returns false if an error was rendered.
+func (s *Server) renderFeedsTableFragment(w http.ResponseWriter, r *http.Request, userID int64) bool {
+	feeds, err := s.queryUserFeedsWithCounts(userID)
+	if err != nil {
+		slog.Error("querying feeds", "error", err)
+		s.renderInternalError(w, r)
+		return false
+	}
+	s.renderFragment(w, "feeds_table.html", feeds)
+	return true
+}
+
 // queryUserFeedsWithCounts returns feeds with item counts and health data.
 func (s *Server) queryUserFeedsWithCounts(userID int64) ([]model.Feed, error) {
 	rows, err := s.db.Query(
@@ -131,18 +144,12 @@ func (s *Server) handleAddFeed(w http.ResponseWriter, r *http.Request) {
 	fetchErr := poller.FetchAndStoreFeed(r.Context(), s.db, feed, s.faviconsDir)
 
 	if htmx {
-		feeds, err := s.queryUserFeedsWithCounts(user.ID)
-		if err != nil {
-			slog.Error("querying feeds", "error", err)
-			s.renderInternalError(w, r)
-			return
-		}
 		if fetchErr != nil {
 			flash(w, r, fmt.Sprintf("Feed added but could not be fetched: %v", fetchErr))
 		} else {
 			flash(w, r, "Feed added successfully.")
 		}
-		s.renderFragment(w, "feeds_table.html", feeds)
+		s.renderFeedsTableFragment(w, r, user.ID)
 		return
 	}
 
@@ -172,14 +179,8 @@ func (s *Server) handleDeleteFeed(w http.ResponseWriter, r *http.Request) {
 			s.renderInternalError(w, r)
 			return
 		}
-		feeds, err := s.queryUserFeedsWithCounts(user.ID)
-		if err != nil {
-			slog.Error("querying feeds", "error", err)
-			s.renderInternalError(w, r)
-			return
-		}
 		flash(w, r, "Feed removed.")
-		s.renderFragment(w, "feeds_table.html", feeds)
+		s.renderFeedsTableFragment(w, r, user.ID)
 		return
 	}
 	s.deleteByID(w, r, "feeds", "Feed", "/feeds")

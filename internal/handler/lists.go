@@ -16,6 +16,19 @@ type listsPageData struct {
 	Error string
 }
 
+// renderListsTableFragment queries the user's lists and renders the
+// lists_table fragment. It returns false if an error was rendered.
+func (s *Server) renderListsTableFragment(w http.ResponseWriter, r *http.Request, userID int64) bool {
+	lists, err := s.queryUserListsWithCounts(userID)
+	if err != nil {
+		slog.Error("querying lists", "error", err)
+		s.renderInternalError(w, r)
+		return false
+	}
+	s.renderFragment(w, "lists_table.html", lists)
+	return true
+}
+
 // queryUserListsWithCounts returns all lists owned by userID with feed counts.
 func (s *Server) queryUserListsWithCounts(userID int64) ([]model.List, error) {
 	rows, err := s.db.Query(
@@ -99,14 +112,8 @@ func (s *Server) handleCreateList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isHTMXRequest(r) {
-		lists, err := s.queryUserListsWithCounts(user.ID)
-		if err != nil {
-			slog.Error("querying lists", "error", err)
-			s.renderInternalError(w, r)
-			return
-		}
 		flash(w, r, "List created.")
-		s.renderFragment(w, "lists_table.html", lists)
+		s.renderListsTableFragment(w, r, user.ID)
 		return
 	}
 
@@ -129,14 +136,8 @@ func (s *Server) handleDeleteList(w http.ResponseWriter, r *http.Request) {
 			s.renderInternalError(w, r)
 			return
 		}
-		lists, err := s.queryUserListsWithCounts(user.ID)
-		if err != nil {
-			slog.Error("querying lists", "error", err)
-			s.renderInternalError(w, r)
-			return
-		}
 		flash(w, r, "List removed.")
-		s.renderFragment(w, "lists_table.html", lists)
+		s.renderListsTableFragment(w, r, user.ID)
 		return
 	}
 	s.deleteByID(w, r, "lists", "List", "/lists")

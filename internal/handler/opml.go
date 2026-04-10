@@ -213,14 +213,8 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if htmx {
-		feeds, err := s.queryUserFeedsWithCounts(user.ID)
-		if err != nil {
-			slog.Error("querying feeds", "error", err)
-			s.renderInternalError(w, r)
-			return
-		}
 		flash(w, r, msg)
-		s.renderFragment(w, "feeds_table.html", feeds)
+		s.renderFeedsTableFragment(w, r, user.ID)
 		return
 	}
 

@@ -204,7 +204,7 @@ func (s *Server) handleRenameList(w http.ResponseWriter, r *http.Request) {
 	if isHTMXRequest(r) {
 		setHTMXTriggers(w, htmxTriggers{
 			"showFlash":    "List renamed.",
-			"setPageTitle": name + " — rdr",
+			"setPageTitle": name,
 		})
 		w.WriteHeader(http.StatusNoContent)
 		return

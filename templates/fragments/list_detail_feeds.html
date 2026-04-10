@@ -1,50 +1,9 @@
 <section class="list-detail-section" id="feeds-in-list">
     <h2>Feeds in this list</h2>
-    {{if .InList}}
-    <table>
-        <tbody>
-            {{range .InList}}
-            <tr>
-                <td>{{feedName .}}</td>
-                <td>
-                    <form method="post" action="/lists/{{$.List.ID}}/feeds/{{.ID}}/delete"
-                          hx-post="/lists/{{$.List.ID}}/feeds/{{.ID}}/delete"
-                          hx-target="#feeds-in-list"
-                          hx-swap="outerHTML">
-                        <button type="submit" aria-label="Remove {{feedName .}}">Remove</button>
-                    </form>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
-    {{else}}
-    <p>No feeds in this list yet.</p>
-    {{end}}
+    {{template "list_feeds_in_list" .}}
 </section>
 
 <section class="list-detail-section" id="feeds-available" hx-swap-oob="outerHTML">
     <h2>Available feeds</h2>
-    {{if .NotInList}}
-    <table>
-        <tbody>
-            {{range .NotInList}}
-            <tr>
-                <td>{{feedName .}}</td>
-                <td>
-                    <form method="post" action="/lists/{{$.List.ID}}/feeds"
-                          hx-post="/lists/{{$.List.ID}}/feeds"
-                          hx-target="#feeds-in-list"
-                          hx-swap="outerHTML">
-                        <input type="hidden" name="feed_id" value="{{.ID}}">
-                        <button type="submit" aria-label="Add {{feedName .}}">Add</button>
-                    </form>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
-    {{else}}
-    <p>All feeds are already in this list.</p>
-    {{end}}
+    {{template "list_feeds_available" .}}
 </section>

@@ -97,7 +97,7 @@ func TestSetHTMXTriggers(t *testing.T) {
 		rec := httptest.NewRecorder()
 		setHTMXTriggers(rec, htmxTriggers{
 			"showFlash":    "Renamed.",
-			"setPageTitle": "New — rdr",
+			"setPageTitle": "New",
 		})
 		got := rec.Header().Get("HX-Trigger")
 		// JSON key order is non-deterministic; parse and check.
@@ -108,8 +108,8 @@ func TestSetHTMXTriggers(t *testing.T) {
 		if m["showFlash"] != "Renamed." {
 			t.Errorf("showFlash = %v, want Renamed.", m["showFlash"])
 		}
-		if m["setPageTitle"] != "New — rdr" {
-			t.Errorf("setPageTitle = %v, want New — rdr", m["setPageTitle"])
+		if m["setPageTitle"] != "New" {
+			t.Errorf("setPageTitle = %v, want New", m["setPageTitle"])
 		}
 	})
 }

@@ -72,11 +72,39 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // parseTemplates parses each page template together with the base layout
-// and stores them in a map keyed by page filename.
+// and stores them in a map keyed by page filename. Fragment templates are
+// parsed standalone (no base layout). Partial templates from
+// templates/partials/ are parsed into both page and fragment templates so
+// that {{template "partial_name" .}} calls resolve in either context.
 func (s *Server) parseTemplates(templateFiles fs.FS) error {
 	baseBytes, err := fs.ReadFile(templateFiles, "templates/layout/base.html")
 	if err != nil {
 		return fmt.Errorf("reading base layout: %w", err)
+	}
+
+	// Read partial templates (shared between pages and fragments).
+	var partialContents [][]byte
+	if partials, err := fs.ReadDir(templateFiles, "templates/partials"); err == nil {
+		for _, entry := range partials {
+			if entry.IsDir() {
+				continue
+			}
+			b, err := fs.ReadFile(templateFiles, "templates/partials/"+entry.Name())
+			if err != nil {
+				return fmt.Errorf("reading partial %q: %w", entry.Name(), err)
+			}
+			partialContents = append(partialContents, b)
+		}
+	}
+
+	// parsePartials parses all partial definitions into an existing template.
+	parsePartials := func(tmpl *template.Template) error {
+		for _, p := range partialContents {
+			if _, err := tmpl.Parse(string(p)); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 
 	pages, err := fs.ReadDir(templateFiles, "templates/pages")
@@ -106,6 +134,10 @@ func (s *Server) parseTemplates(templateFiles fs.FS) error {
 			return fmt.Errorf("parsing page template %q: %w", name, err)
 		}
 
+		if err := parsePartials(tmpl); err != nil {
+			return fmt.Errorf("parsing partials for page %q: %w", name, err)
+		}
+
 		s.templates[name] = tmpl
 	}
 
@@ -128,6 +160,11 @@ func (s *Server) parseTemplates(templateFiles fs.FS) error {
 		if err != nil {
 			return fmt.Errorf("parsing fragment template %q: %w", name, err)
 		}
+
+		if err := parsePartials(tmpl); err != nil {
+			return fmt.Errorf("parsing partials for fragment %q: %w", name, err)
+		}
+
 		s.templates["fragments/"+name] = tmpl
 	}
 

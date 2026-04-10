@@ -254,7 +254,7 @@
 
   // --- HTMX: update page title sent via HX-Trigger ---
   document.body.addEventListener("setPageTitle", function (e) {
-    document.title = e.detail.value;
+    document.title = e.detail.value + " - rdr";
   });
 
   // --- HTMX: apply theme change sent via HX-Trigger ---

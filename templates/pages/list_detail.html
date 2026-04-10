@@ -1,4 +1,4 @@
-{{define "title"}}{{.Content.List.Name}} — rdr{{end}}
+{{define "title"}}{{.Content.List.Name}} - rdr{{end}}
 {{define "content"}}
 <header class="list-detail-header">
     <form method="post" action="/lists/{{.Content.List.ID}}/rename" hx-post="/lists/{{.Content.List.ID}}/rename" hx-swap="none">
@@ -14,52 +14,11 @@
 
 <section class="list-detail-section" id="feeds-in-list">
     <h2>Feeds in this list</h2>
-    {{if .Content.InList}}
-    <table>
-        <tbody>
-            {{range .Content.InList}}
-            <tr>
-                <td>{{feedName .}}</td>
-                <td>
-                    <form method="post" action="/lists/{{$.Content.List.ID}}/feeds/{{.ID}}/delete"
-                          hx-post="/lists/{{$.Content.List.ID}}/feeds/{{.ID}}/delete"
-                          hx-target="#feeds-in-list"
-                          hx-swap="outerHTML">
-                        <button type="submit" aria-label="Remove {{feedName .}}">Remove</button>
-                    </form>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
-    {{else}}
-    <p>No feeds in this list yet.</p>
-    {{end}}
+    {{template "list_feeds_in_list" .Content}}
 </section>
 
 <section class="list-detail-section" id="feeds-available">
     <h2>Available feeds</h2>
-    {{if .Content.NotInList}}
-    <table>
-        <tbody>
-            {{range .Content.NotInList}}
-            <tr>
-                <td>{{feedName .}}</td>
-                <td>
-                    <form method="post" action="/lists/{{$.Content.List.ID}}/feeds"
-                          hx-post="/lists/{{$.Content.List.ID}}/feeds"
-                          hx-target="#feeds-in-list"
-                          hx-swap="outerHTML">
-                        <input type="hidden" name="feed_id" value="{{.ID}}">
-                        <button type="submit" aria-label="Add {{feedName .}}">Add</button>
-                    </form>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
-    {{else}}
-    <p>All feeds are already in this list.</p>
-    {{end}}
+    {{template "list_feeds_available" .Content}}
 </section>
 {{end}}

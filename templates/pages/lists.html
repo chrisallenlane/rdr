@@ -1,4 +1,4 @@
-{{define "title"}}Lists — rdr{{end}}
+{{define "title"}}Lists - rdr{{end}}
 {{define "content"}}
 <h1>Lists</h1>
 
@@ -17,32 +17,5 @@
 <p><mark>{{.Content.Error}}</mark></p>
 {{end}}
 
-<div id="lists-table">
-{{if .Content.Lists}}
-<table>
-    <thead>
-        <tr><th>List</th><th>Feeds</th><th></th><th></th></tr>
-    </thead>
-    <tbody>
-        {{range .Content.Lists}}
-        <tr>
-            <td><a href="/lists/{{.ID}}">{{.Name}}</a></td>
-            <td>{{.FeedCount}}</td>
-            <td><a href="/items?list={{.ID}}">View items</a></td>
-            <td>
-                <form method="post" action="/lists/{{.ID}}/delete"
-                      hx-post="/lists/{{.ID}}/delete"
-                      hx-target="#lists-table"
-                      hx-swap="outerHTML">
-                    <button type="submit" aria-label="Remove {{.Name}}">Remove</button>
-                </form>
-            </td>
-        </tr>
-        {{end}}
-    </tbody>
-</table>
-{{else}}
-<p>No lists yet. Create one above to organize your feeds.</p>
-{{end}}
-</div>
+{{template "lists_table" .Content.Lists}}
 {{end}}

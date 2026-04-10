@@ -10,11 +10,6 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	started := s.syncFeeds != nil && s.syncFeeds(r.Context())
 
 	if isHTMXRequest(r) {
-		if started {
-			flash(w, r, "Feed sync started.")
-		} else {
-			flash(w, r, "A sync is already in progress.")
-		}
 		w.WriteHeader(http.StatusOK)
 		return
 	}
