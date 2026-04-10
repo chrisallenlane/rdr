@@ -1,0 +1,19 @@
+name: Build and push Docker image
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: linux-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and push
+        run: |
+          docker build \
+            --build-arg VERSION=${{ github.sha }} \
+            -t gitea.nas.lab.chris-allen-lane.com/chrisallenlane/rdr:latest \
+            .
+          docker push gitea.nas.lab.chris-allen-lane.com/chrisallenlane/rdr:latest
