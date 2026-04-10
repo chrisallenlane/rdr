@@ -1,0 +1,34 @@
+<div id="search-results">
+{{if .Error}}
+<p><strong>{{.Error}}</strong></p>
+{{end}}
+
+{{if .Query}}
+    {{if .Results}}
+    <p>{{.TotalResults}} results for "{{.Query}}"</p>
+    <div class="search-results">
+    {{range .Results}}
+    <article>
+        <header>
+            <small>{{.FeedTitle}}</small>
+            {{if .PublishedAt}} · <small>{{timeAgo .PublishedAt}}</small>{{end}}
+        </header>
+        <p>
+            <a href="/items/{{.ID}}">{{if .TitleSnippet}}{{.TitleSnippet}}{{else}}{{.Title}}{{end}}</a>
+        </p>
+        {{if .ContentSnippet}}<p><small>{{.ContentSnippet}}</small></p>{{end}}
+    </article>
+    {{end}}
+    </div>
+
+    {{/* Pagination */}}
+    <nav aria-label="Pagination">
+        {{if gt .Page 1}}<a href="/search?q={{.Query}}&page={{subtract .Page 1}}">← Previous</a>{{end}}
+        <span>Page {{.Page}} of {{.TotalPages}}</span>
+        {{if lt .Page .TotalPages}}<a href="/search?q={{.Query}}&page={{add .Page 1}}">Next →</a>{{end}}
+    </nav>
+    {{else if not .Error}}
+    <p>No items matching "{{.Query}}"</p>
+    {{end}}
+{{end}}
+</div>

@@ -35,17 +35,25 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 
+	htmx := isHTMXRequest(r)
+
 	renderSearchErr := func() {
-		s.render(w, r, "search.html", PageData{
-			Content: searchPageData{Query: q, Error: searchErrMsg},
-		})
+		data := searchPageData{Query: q, Error: searchErrMsg}
+		if htmx {
+			s.renderFragment(w, "search_results.html", data)
+			return
+		}
+		s.render(w, r, "search.html", PageData{Content: data})
 	}
 
 	// No query: render empty search form.
 	if q == "" {
-		s.render(w, r, "search.html", PageData{
-			Content: searchPageData{},
-		})
+		data := searchPageData{}
+		if htmx {
+			s.renderFragment(w, "search_results.html", data)
+			return
+		}
+		s.render(w, r, "search.html", PageData{Content: data})
 		return
 	}
 
@@ -118,13 +126,18 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.render(w, r, "search.html", PageData{
-		Content: searchPageData{
-			Query:        q,
-			Results:      results,
-			TotalResults: totalResults,
-			Page:         page,
-			TotalPages:   totalPages,
-		},
-	})
+	data := searchPageData{
+		Query:        q,
+		Results:      results,
+		TotalResults: totalResults,
+		Page:         page,
+		TotalPages:   totalPages,
+	}
+
+	if htmx {
+		s.renderFragment(w, "search_results.html", data)
+		return
+	}
+
+	s.render(w, r, "search.html", PageData{Content: data})
 }

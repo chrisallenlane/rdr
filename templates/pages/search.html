@@ -4,11 +4,17 @@
 
 <form method="get" action="/search">
     <fieldset role="group">
-        <input type="search" name="q" value="{{.Content.Query}}" aria-label="Search items" placeholder="Search items..." autofocus>
+        <input type="search" name="q" value="{{.Content.Query}}" aria-label="Search items" placeholder="Search items..." autofocus
+               hx-get="/search"
+               hx-trigger="keyup changed delay:300ms, search"
+               hx-target="#search-results"
+               hx-swap="outerHTML"
+               hx-replace-url="true">
         <button type="submit">Search</button>
     </fieldset>
 </form>
 
+<div id="search-results">
 {{if .Content.Error}}
 <p><strong>{{.Content.Error}}</strong></p>
 {{end}}
@@ -41,4 +47,5 @@
     <p>No items matching "{{.Content.Query}}"</p>
     {{end}}
 {{end}}
+</div>
 {{end}}
