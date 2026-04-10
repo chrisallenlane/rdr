@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -80,6 +81,72 @@ func TestParseTemplatesWithoutFragments(t *testing.T) {
 	if err := s.parseTemplates(fs); err != nil {
 		t.Fatalf("parseTemplates without fragments dir should not error: %v", err)
 	}
+}
+
+func TestSetHTMXTriggers(t *testing.T) {
+	t.Run("single event", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		setHTMXTriggers(rec, htmxTriggers{"showFlash": "Hello"})
+		got := rec.Header().Get("HX-Trigger")
+		if got != `{"showFlash":"Hello"}` {
+			t.Errorf("HX-Trigger = %q, want %q", got, `{"showFlash":"Hello"}`)
+		}
+	})
+
+	t.Run("multiple events", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		setHTMXTriggers(rec, htmxTriggers{
+			"showFlash":    "Renamed.",
+			"setPageTitle": "New — rdr",
+		})
+		got := rec.Header().Get("HX-Trigger")
+		// JSON key order is non-deterministic; parse and check.
+		var m map[string]any
+		if err := json.Unmarshal([]byte(got), &m); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		if m["showFlash"] != "Renamed." {
+			t.Errorf("showFlash = %v, want Renamed.", m["showFlash"])
+		}
+		if m["setPageTitle"] != "New — rdr" {
+			t.Errorf("setPageTitle = %v, want New — rdr", m["setPageTitle"])
+		}
+	})
+}
+
+func TestFlash(t *testing.T) {
+	t.Run("HTMX request uses HX-Trigger", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/", nil)
+		r.Header.Set("HX-Request", "true")
+		flash(rec, r, "Done!")
+		if got := rec.Header().Get("HX-Trigger"); got == "" {
+			t.Error("expected HX-Trigger header to be set")
+		}
+		// Should NOT set a cookie.
+		if cookies := rec.Result().Cookies(); len(cookies) > 0 {
+			t.Error("expected no cookies for HTMX request")
+		}
+	})
+
+	t.Run("normal request uses cookie", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/", nil)
+		flash(rec, r, "Done!")
+		if got := rec.Header().Get("HX-Trigger"); got != "" {
+			t.Error("expected no HX-Trigger header for normal request")
+		}
+		cookies := rec.Result().Cookies()
+		found := false
+		for _, c := range cookies {
+			if c.Name == "rdr_flash" && c.Value == "Done!" {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("expected rdr_flash cookie to be set")
+		}
+	})
 }
 
 func TestTemplateFuncMap(t *testing.T) {

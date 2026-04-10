@@ -283,6 +283,21 @@
     });
   }
 
+  // --- HTMX: show flash messages sent via HX-Trigger ---
+  document.body.addEventListener("showFlash", function (e) {
+    var main = document.getElementById("main-content");
+    if (!main) return;
+
+    var existing = main.querySelector("#flash");
+    if (existing) existing.remove();
+
+    var p = document.createElement("p");
+    p.setAttribute("role", "alert");
+    p.id = "flash";
+    p.textContent = e.detail.value;
+    main.insertBefore(p, main.firstChild);
+  });
+
   initItemsList();
   initPrevNext();
   initSidebar();

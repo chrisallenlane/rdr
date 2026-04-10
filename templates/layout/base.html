@@ -47,7 +47,7 @@
     <main id="main-content" tabindex="-1">
         <a name="main-content"></a>
         {{if .Flash}}
-        <p role="alert">{{.Flash}}</p>
+        <p role="alert" id="flash">{{.Flash}}</p>
         {{end}}
         {{block "content" .}}{{end}}
     </main>

@@ -4,6 +4,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -197,6 +198,27 @@ func setFlash(w http.ResponseWriter, message string) {
 		MaxAge: 10,
 		Path:   "/",
 	})
+}
+
+// htmxTriggers maps event names to payloads for the HX-Trigger header.
+type htmxTriggers map[string]any
+
+// setHTMXTriggers writes a merged HX-Trigger response header as JSON.
+func setHTMXTriggers(w http.ResponseWriter, triggers htmxTriggers) {
+	b, _ := json.Marshal(triggers)
+	w.Header().Set("HX-Trigger", string(b))
+}
+
+// flash sends a flash message via the appropriate mechanism: HX-Trigger
+// header for HTMX requests, cookie for normal requests. Do not call both
+// flash() and setHTMXTriggers() in the same handler — flash() calls
+// setHTMXTriggers() internally and a second call would overwrite it.
+func flash(w http.ResponseWriter, r *http.Request, message string) {
+	if isHTMXRequest(r) {
+		setHTMXTriggers(w, htmxTriggers{"showFlash": message})
+	} else {
+		setFlash(w, message)
+	}
 }
 
 // handleIndex redirects to the items page.
