@@ -93,6 +93,43 @@ func TestHandleAddFeed(t *testing.T) {
 		}
 	})
 
+	t.Run("HTMX valid URL returns fragment", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		feedURL := "https://example.com/feed.xml"
+		req := postFeedForm(t, s, userID, url.Values{"url": {feedURL}})
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
+		}
+	})
+
+	t.Run("HTMX empty URL returns 422", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		req := postFeedForm(t, s, userID, url.Values{"url": {""}})
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
+		}
+	})
+
 	t.Run("duplicate URL", func(t *testing.T) {
 		s := newTestServer(t)
 		userID := createTestUser(t, s, "testuser", "testpass1")
@@ -155,14 +192,15 @@ func TestHandleAddFeed_InitialFetchFailure(t *testing.T) {
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "testuser", "testpass1")
 
+	feedURL := "https://example.com/feed.xml"
 	rec := httptest.NewRecorder()
 	s.ServeHTTP(
 		rec,
-		postFeedForm(t, s, userID, url.Values{"url": {"https://example.com/feed.xml"}}),
+		postFeedForm(t, s, userID, url.Values{"url": {feedURL}}),
 	)
 
-	// The initial fetch always fails in tests (no real HTTP server), so the
-	// handler must take the error path and set the "could not be fetched" flash.
+	// The initial fetch always fails in tests (no real HTTP server). The
+	// handler should still create the feed row and set a flash cookie.
 	var flashValue string
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == "rdr_flash" {
@@ -170,12 +208,19 @@ func TestHandleAddFeed_InitialFetchFailure(t *testing.T) {
 			break
 		}
 	}
+	if flashValue == "" {
+		t.Error("expected rdr_flash cookie to be set and non-empty after fetch failure")
+	}
 
-	if !strings.Contains(flashValue, "could not be fetched") {
-		t.Errorf(
-			"flash cookie = %q, want value containing %q",
-			flashValue, "could not be fetched",
-		)
+	var count int
+	if err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM feeds WHERE user_id = ? AND url = ?",
+		userID, feedURL,
+	).Scan(&count); err != nil {
+		t.Fatalf("querying feed row: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("feed row count = %d, want 1 (feed should be created even if fetch fails)", count)
 	}
 }
 
@@ -218,6 +263,86 @@ func TestHandleDeleteFeed(t *testing.T) {
 		}
 		if count != 0 {
 			t.Errorf("feed row count = %d, want 0", count)
+		}
+	})
+
+	t.Run("HTMX delete own feed returns fragment", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		result, err := s.db.Exec(
+			"INSERT INTO feeds (user_id, url) VALUES (?, ?)",
+			userID, "https://example.com/feed.xml",
+		)
+		if err != nil {
+			t.Fatalf("inserting feed: %v", err)
+		}
+		feedID, _ := result.LastInsertId()
+
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/feeds/%d/delete", feedID),
+		)
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
+		}
+
+		var count int
+		if err := s.db.QueryRow(
+			"SELECT COUNT(*) FROM feeds WHERE id = ?", feedID,
+		).Scan(&count); err != nil {
+			t.Fatalf("querying feed: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("feed row count = %d, want 0 (should be deleted)", count)
+		}
+	})
+
+	t.Run("HTMX delete another user's feed returns 404", func(t *testing.T) {
+		s := newTestServer(t)
+		ownerID := createTestUser(t, s, "owner", "testpass1")
+		attackerID := createTestUser(t, s, "attacker", "testpass2")
+
+		result, err := s.db.Exec(
+			"INSERT INTO feeds (user_id, url) VALUES (?, ?)",
+			ownerID, "https://example.com/feed.xml",
+		)
+		if err != nil {
+			t.Fatalf("inserting feed: %v", err)
+		}
+		feedID, _ := result.LastInsertId()
+
+		req := authedRequest(
+			t, s, attackerID,
+			http.MethodPost,
+			fmt.Sprintf("/feeds/%d/delete", feedID),
+		)
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+
+		var count int
+		if err := s.db.QueryRow(
+			"SELECT COUNT(*) FROM feeds WHERE id = ?", feedID,
+		).Scan(&count); err != nil {
+			t.Fatalf("querying feed: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("feed row count = %d, want 1 (should still exist)", count)
 		}
 	})
 

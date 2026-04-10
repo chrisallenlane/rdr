@@ -8,6 +8,59 @@ import (
 	"time"
 )
 
+func TestRefererPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		referer  string
+		fallback string
+		want     string
+	}{
+		{
+			name:     "valid referer returns path",
+			referer:  "http://localhost:8080/items",
+			fallback: "/feeds",
+			want:     "/items",
+		},
+		{
+			name:     "empty referer returns fallback",
+			referer:  "",
+			fallback: "/feeds",
+			want:     "/feeds",
+		},
+		{
+			name:     "unparseable referer returns fallback",
+			referer:  "://not-a-url",
+			fallback: "/feeds",
+			want:     "/feeds",
+		},
+		{
+			name:     "referer with empty path returns fallback",
+			referer:  "http://localhost",
+			fallback: "/feeds",
+			want:     "/feeds",
+		},
+		{
+			name:     "referer with query string returns only path",
+			referer:  "http://localhost:8080/items?feed=3&unread=1",
+			fallback: "/feeds",
+			want:     "/items",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", "/", nil)
+			if tt.referer != "" {
+				r.Header.Set("Referer", tt.referer)
+			}
+			got := refererPath(r, tt.fallback)
+			if got != tt.want {
+				t.Errorf("refererPath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsHTMXRequest(t *testing.T) {
 	t.Run("with HX-Request header", func(t *testing.T) {
 		r := httptest.NewRequest("GET", "/", nil)

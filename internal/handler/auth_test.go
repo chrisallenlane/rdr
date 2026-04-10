@@ -11,6 +11,18 @@ import (
 	"github.com/chrisallenlane/rdr/internal/model"
 )
 
+func TestHandleLoginForm(t *testing.T) {
+	s := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
 func TestHandleRegisterForm(t *testing.T) {
 	s := newTestServer(t)
 

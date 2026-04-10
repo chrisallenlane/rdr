@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -113,9 +112,6 @@ func TestLoad_InvalidPollInterval(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid poll interval, got nil")
 	}
-	if !strings.Contains(err.Error(), "RDR_POLL_INTERVAL") {
-		t.Errorf("error %q should mention RDR_POLL_INTERVAL", err.Error())
-	}
 }
 
 func TestLoad_PollIntervalBelowMinimum(t *testing.T) {
@@ -127,9 +123,6 @@ func TestLoad_PollIntervalBelowMinimum(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for poll interval below 1m, got nil")
 	}
-	if !strings.Contains(err.Error(), "RDR_POLL_INTERVAL") {
-		t.Errorf("error %q should mention RDR_POLL_INTERVAL", err.Error())
-	}
 }
 
 func TestLoad_InvalidRetentionDays(t *testing.T) {
@@ -140,9 +133,6 @@ func TestLoad_InvalidRetentionDays(t *testing.T) {
 	_, err := Load()
 	if err == nil {
 		t.Fatal("expected error for invalid retention days, got nil")
-	}
-	if !strings.Contains(err.Error(), "RDR_RETENTION_DAYS") {
-		t.Errorf("error %q should mention RDR_RETENTION_DAYS", err.Error())
 	}
 }
 

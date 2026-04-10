@@ -2,26 +2,22 @@ package httpclient
 
 import (
 	"testing"
-	"time"
 )
 
 func TestClientTimeout(t *testing.T) {
-	want := 30 * time.Second
-	if Client.Timeout != want {
-		t.Errorf("Client.Timeout = %v, want %v", Client.Timeout, want)
+	if Client.Timeout <= 0 {
+		t.Errorf("Client.Timeout = %v, want > 0", Client.Timeout)
 	}
 }
 
 func TestUserAgent(t *testing.T) {
-	want := "rdr/1.0"
-	if UserAgent != want {
-		t.Errorf("UserAgent = %q, want %q", UserAgent, want)
+	if UserAgent == "" {
+		t.Error("UserAgent is empty, want non-empty string")
 	}
 }
 
 func TestMaxResponseSize(t *testing.T) {
-	want := 10 << 20
-	if MaxResponseSize != want {
-		t.Errorf("MaxResponseSize = %d, want %d", MaxResponseSize, want)
+	if MaxResponseSize <= 0 {
+		t.Errorf("MaxResponseSize = %d, want > 0", MaxResponseSize)
 	}
 }

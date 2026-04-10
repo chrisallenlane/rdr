@@ -103,6 +103,48 @@ func TestVerifyOwnership(t *testing.T) {
 	})
 }
 
+func TestVerifyOwnership_InvalidTable(t *testing.T) {
+	t.Run("verifyOwnership rejects invalid table", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+		got := s.verifyOwnership(rec, req, "hacked_table", 1, userID)
+		if got {
+			t.Errorf("verifyOwnership = true, want false for invalid table")
+		}
+		if rec.Code != http.StatusInternalServerError {
+			t.Errorf("response status = %d, want %d", rec.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+func TestDeleteByID_InvalidTable(t *testing.T) {
+	t.Run("deleteByID rejects invalid table", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		// Route through the mux so path parameters are available.
+		// Use /feeds/1/delete as the path but the handler code checks the
+		// table parameter before doing any DB work.
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			"/feeds/1/delete",
+		)
+		rec := httptest.NewRecorder()
+
+		// Call deleteByID directly with an invalid table name.
+		s.deleteByID(rec, req, "hacked_table", "Entity", "/redirect")
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
 func TestDeleteByID(t *testing.T) {
 	t.Run("delete own row", func(t *testing.T) {
 		s := newTestServer(t)

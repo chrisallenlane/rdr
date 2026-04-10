@@ -179,6 +179,32 @@ func postOPMLImport(t *testing.T, s *Server, userID int64, opmlContent string) *
 }
 
 func TestHandleImportOPML(t *testing.T) {
+	t.Run("HTMX import returns fragment", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		opml := `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>Test</title></head>
+  <body>
+    <outline type="rss" text="Feed A" title="Feed A" xmlUrl="https://a.example.com/feed.xml" htmlUrl="https://a.example.com"/>
+  </body>
+</opml>`
+
+		req := postOPMLImport(t, s, userID, opml)
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
+		}
+	})
+
 	t.Run("import flat OPML", func(t *testing.T) {
 		s := newTestServer(t)
 		userID := createTestUser(t, s, "testuser", "testpass1")

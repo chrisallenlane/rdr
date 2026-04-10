@@ -338,3 +338,59 @@ func TestCleanExpiredSessions_EmptyTable(t *testing.T) {
 		t.Errorf("CleanExpiredSessions on empty table = %d, want 0", n)
 	}
 }
+
+func TestRunRetention(t *testing.T) {
+	t.Run("prunes items and cleans sessions", func(t *testing.T) {
+		db := testutil.OpenTestDB(t)
+
+		userID := testutil.InsertUser(t, db, "alice")
+		feedID := insertFeed(t, db, userID)
+
+		// Old read item: should be pruned.
+		insertItem(t, db, feedID, "old-read-1", "2020-01-01 00:00:00", 1)
+		// Recent unread: should be kept.
+		insertItem(t, db, feedID, "recent-unread", "2099-12-31 00:00:00", 0)
+
+		// Expired session: should be cleaned.
+		testutil.InsertSession(t, db, userID, "expired-session",
+			time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+		// Valid session: should be kept.
+		testutil.InsertSession(t, db, userID, "valid-session",
+			time.Date(2099, 12, 31, 0, 0, 0, 0, time.UTC))
+
+		runRetention(db, 7)
+
+		if got := countItems(t, db); got != 1 {
+			t.Errorf("item count after runRetention = %d, want 1 (old-read pruned)", got)
+		}
+		if got := countSessions(t, db); got != 1 {
+			t.Errorf("session count after runRetention = %d, want 1 (expired cleaned)", got)
+		}
+	})
+
+	t.Run("with zero days skips item pruning but cleans sessions", func(t *testing.T) {
+		db := testutil.OpenTestDB(t)
+
+		userID := testutil.InsertUser(t, db, "alice")
+		feedID := insertFeed(t, db, userID)
+
+		// Old read item: should NOT be pruned when retentionDays is 0.
+		insertItem(t, db, feedID, "old-read-1", "2020-01-01 00:00:00", 1)
+
+		// Expired session: should still be cleaned.
+		testutil.InsertSession(t, db, userID, "expired-session",
+			time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+		// Valid session: should be kept.
+		testutil.InsertSession(t, db, userID, "valid-session",
+			time.Date(2099, 12, 31, 0, 0, 0, 0, time.UTC))
+
+		runRetention(db, 0)
+
+		if got := countItems(t, db); got != 1 {
+			t.Errorf("item count after runRetention(0) = %d, want 1 (no pruning when disabled)", got)
+		}
+		if got := countSessions(t, db); got != 1 {
+			t.Errorf("session count after runRetention(0) = %d, want 1 (expired cleaned)", got)
+		}
+	})
+}

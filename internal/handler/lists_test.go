@@ -131,6 +131,34 @@ func TestHandleCreateList(t *testing.T) {
 		}
 	})
 
+	t.Run("HTMX duplicate name returns 422", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		if _, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			userID, "Existing List",
+		); err != nil {
+			t.Fatalf("inserting list: %v", err)
+		}
+
+		form := url.Values{"name": {"Existing List"}}
+		req := authedRequest(t, s, userID, http.MethodPost, "/lists")
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
+		}
+	})
+
 	t.Run("HTMX empty name returns 422", func(t *testing.T) {
 		s := newTestServer(t)
 		userID := createTestUser(t, s, "testuser", "testpass1")
@@ -275,6 +303,58 @@ func TestHandleRenameList(t *testing.T) {
 		var name string
 		if err := s.db.QueryRow(
 			"SELECT name FROM lists WHERE id = ?", listID,
+		).Scan(&name); err != nil {
+			t.Fatalf("querying list name: %v", err)
+		}
+		if name != "Other List" {
+			t.Errorf("name = %q, want %q", name, "Other List")
+		}
+	})
+
+	t.Run("HTMX duplicate name returns 422", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		if _, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			userID, "Taken Name",
+		); err != nil {
+			t.Fatalf("inserting first list: %v", err)
+		}
+
+		result, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			userID, "Other List",
+		)
+		if err != nil {
+			t.Fatalf("inserting second list: %v", err)
+		}
+		otherID, _ := result.LastInsertId()
+
+		form := url.Values{"name": {"Taken Name"}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/rename", otherID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
+		}
+
+		// Name should be unchanged.
+		var name string
+		if err := s.db.QueryRow(
+			"SELECT name FROM lists WHERE id = ?", otherID,
 		).Scan(&name); err != nil {
 			t.Fatalf("querying list name: %v", err)
 		}
@@ -476,6 +556,65 @@ func TestHandleDeleteList(t *testing.T) {
 
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("HTMX delete non-existent list returns 404", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			"/lists/99999/delete",
+		)
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("HTMX delete another user's list returns 404", func(t *testing.T) {
+		s := newTestServer(t)
+		ownerID := createTestUser(t, s, "owner", "testpass1")
+		attackerID := createTestUser(t, s, "attacker", "testpass2")
+
+		result, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			ownerID, "Owner's List",
+		)
+		if err != nil {
+			t.Fatalf("inserting list: %v", err)
+		}
+		listID, _ := result.LastInsertId()
+
+		req := authedRequest(
+			t, s, attackerID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/delete", listID),
+		)
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+
+		// List should still exist.
+		var count int
+		if err := s.db.QueryRow(
+			"SELECT COUNT(*) FROM lists WHERE id = ?", listID,
+		).Scan(&count); err != nil {
+			t.Fatalf("querying list: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("list row count = %d, want 1 (should still exist)", count)
 		}
 	})
 
