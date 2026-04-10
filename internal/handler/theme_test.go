@@ -95,4 +95,35 @@ func TestHandleThemeChange(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("HTMX request returns 204 with HX-Trigger", func(t *testing.T) {
+		body := strings.NewReader("theme=modus-dark")
+		req, _ := http.NewRequest("POST", "/theme", body)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+
+		rr := httptest.NewRecorder()
+		s.handleThemeChange(rr, req)
+
+		if rr.Code != http.StatusNoContent {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNoContent)
+		}
+		trigger := rr.Header().Get("HX-Trigger")
+		if !strings.Contains(trigger, "setTheme") {
+			t.Errorf("HX-Trigger = %q, want to contain setTheme", trigger)
+		}
+		if !strings.Contains(trigger, "modus-dark") {
+			t.Errorf("HX-Trigger = %q, want to contain modus-dark", trigger)
+		}
+		// Cookie should still be set.
+		var found bool
+		for _, c := range rr.Result().Cookies() {
+			if c.Name == "rdr_theme" && c.Value == "modus-dark" {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("rdr_theme cookie not set for HTMX request")
+		}
+	})
 }

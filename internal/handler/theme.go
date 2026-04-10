@@ -51,5 +51,11 @@ func (s *Server) handleThemeChange(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
+	if isHTMXRequest(r) {
+		setHTMXTriggers(w, htmxTriggers{"setTheme": theme})
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	http.Redirect(w, r, refererPath(r, "/items"), http.StatusSeeOther)
 }

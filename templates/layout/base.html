@@ -23,7 +23,7 @@
                 <li><a href="/search">Search</a></li>
                 {{end}}
                 <li>
-                    <form method="post" action="/theme">
+                    <form method="post" action="/theme" hx-post="/theme" hx-swap="none">
                         <select name="theme" aria-label="Theme">
                             <option value="auto" {{if eq .Theme "auto"}}selected{{end}}>Auto</option>
                             <option value="solarized-light" {{if eq .Theme "solarized-light"}}selected{{end}}>Solarized Light</option>

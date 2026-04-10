@@ -128,7 +128,7 @@
     var select = document.querySelector('select[name="theme"]');
     if (!select) return;
     select.addEventListener("change", function () {
-      select.form.submit();
+      select.form.requestSubmit();
     });
   }
 
@@ -259,6 +259,11 @@
       if (e.target === backdrop) close();
     });
   }
+
+  // --- HTMX: apply theme change sent via HX-Trigger ---
+  document.body.addEventListener("setTheme", function (e) {
+    document.documentElement.setAttribute("data-theme", e.detail.value);
+  });
 
   // --- HTMX: show flash messages sent via HX-Trigger ---
   document.body.addEventListener("showFlash", function (e) {
