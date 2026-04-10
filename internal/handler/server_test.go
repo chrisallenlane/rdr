@@ -47,9 +47,9 @@ func TestRenderFragment(t *testing.T) {
 
 func TestParseTemplatesWithFragments(t *testing.T) {
 	fs := fstest.MapFS{
-		"templates/layout/base.html":        {Data: []byte(testBaseHTML)},
-		"templates/pages/test.html":         {Data: []byte(`{{define "title"}}T{{end}}{{define "content"}}c{{end}}`)},
-		"templates/fragments/frag.html":     {Data: []byte(`<p>{{.}}</p>`)},
+		"templates/layout/base.html":    {Data: []byte(testBaseHTML)},
+		"templates/pages/test.html":     {Data: []byte(`{{define "title"}}T{{end}}{{define "content"}}c{{end}}`)},
+		"templates/fragments/frag.html": {Data: []byte(`<p>{{.}}</p>`)},
 	}
 
 	s := &Server{

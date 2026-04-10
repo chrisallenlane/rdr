@@ -132,29 +132,6 @@
     });
   }
 
-  // --- Sync button: show spinner, submit via fetch, reload ---
-  function initSyncButtons() {
-    var forms = document.querySelectorAll(".sync-form");
-    forms.forEach(function (form) {
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        var btn = form.querySelector(".sync-button");
-        if (!btn || btn.classList.contains("syncing")) return;
-        btn.classList.add("syncing");
-        fetch(form.action, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        }).then(function () {
-          setTimeout(function () {
-            window.location.reload();
-          }, 1000);
-        });
-      });
-    });
-  }
-
-
-
   // --- Keyboard shortcuts help overlay (? to toggle) ---
   function initShortcutsHelp() {
     var shortcuts = [
@@ -267,7 +244,10 @@
 
   // --- HTMX: reset forms with data-reset-on-success after successful submit ---
   document.body.addEventListener("htmx:afterRequest", function (e) {
-    if (e.detail.successful && e.detail.elt.hasAttribute("data-reset-on-success")) {
+    if (
+      e.detail.successful &&
+      e.detail.elt.hasAttribute("data-reset-on-success")
+    ) {
       e.detail.elt.reset();
     }
   });
@@ -301,6 +281,5 @@
   initPrevNext();
   initSidebar();
   initThemeSelect();
-  initSyncButtons();
   initShortcutsHelp();
 })();

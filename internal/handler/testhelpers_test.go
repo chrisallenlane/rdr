@@ -32,12 +32,12 @@ var testTemplateFS = fstest.MapFS{
 	"templates/pages/list_detail.html": {Data: []byte(`{{define "title"}}List{{end}}{{define "content"}}list_detail{{end}}`)},
 
 	// Fragment templates (standalone, no base layout).
-	"templates/fragments/star_button.html":        {Data: []byte(`<form>{{if .Starred}}starred{{else}}unstarred{{end}}</form>`)},
+	"templates/fragments/star_button.html":       {Data: []byte(`<form>{{if .Starred}}starred{{else}}unstarred{{end}}</form>`)},
 	"templates/fragments/list_detail_feeds.html": {Data: []byte(`<section id="feeds-in-list">{{range .InList}}{{.ID}}{{end}}</section>`)},
 	"templates/fragments/lists_table.html":       {Data: []byte(`<div id="lists-table">{{range .}}{{.Name}}{{end}}</div>`)},
 	"templates/fragments/feeds_table.html":       {Data: []byte(`<div id="feeds-table">{{range .}}{{.URL}}{{end}}</div>`)},
 	"templates/fragments/items_section.html":     {Data: []byte(`<section id="items-section">{{.Heading}}</section>`)},
-	"templates/fragments/search_results.html":   {Data: []byte(`<div id="search-results">{{.Query}}</div>`)},
+	"templates/fragments/search_results.html":    {Data: []byte(`<div id="search-results">{{.Query}}</div>`)},
 }
 
 // newTestServer creates a *Server backed by an in-memory SQLite database and
