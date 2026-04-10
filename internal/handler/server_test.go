@@ -1,13 +1,86 @@
 package handler
 
 import (
+	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/chrisallenlane/rdr/internal/model"
 )
+
+func TestRenderFragment(t *testing.T) {
+	t.Run("renders fragment without base layout", func(t *testing.T) {
+		s := newTestServer(t)
+		// Manually add a fragment template.
+		tmpl := template.Must(template.New("test.html").Parse(`<div id="test">{{.Name}}</div>`))
+		s.templates["fragments/test.html"] = tmpl
+
+		rec := httptest.NewRecorder()
+		s.renderFragment(rec, "test.html", struct{ Name string }{"hello"})
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if ct := rec.Header().Get("Content-Type"); ct != "text/html; charset=utf-8" {
+			t.Errorf("Content-Type = %q, want text/html; charset=utf-8", ct)
+		}
+		body := rec.Body.String()
+		if body != `<div id="test">hello</div>` {
+			t.Errorf("body = %q, want %q", body, `<div id="test">hello</div>`)
+		}
+	})
+
+	t.Run("unknown fragment returns 500", func(t *testing.T) {
+		s := newTestServer(t)
+		rec := httptest.NewRecorder()
+		s.renderFragment(rec, "nonexistent.html", nil)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+func TestParseTemplatesWithFragments(t *testing.T) {
+	fs := fstest.MapFS{
+		"templates/layout/base.html":        {Data: []byte(testBaseHTML)},
+		"templates/pages/test.html":         {Data: []byte(`{{define "title"}}T{{end}}{{define "content"}}c{{end}}`)},
+		"templates/fragments/frag.html":     {Data: []byte(`<p>{{.}}</p>`)},
+	}
+
+	s := &Server{
+		mux:         http.NewServeMux(),
+		faviconsDir: t.TempDir(),
+	}
+	if err := s.parseTemplates(fs); err != nil {
+		t.Fatalf("parseTemplates: %v", err)
+	}
+
+	if _, ok := s.templates["test.html"]; !ok {
+		t.Error("page template not found")
+	}
+	if _, ok := s.templates["fragments/frag.html"]; !ok {
+		t.Error("fragment template not found")
+	}
+}
+
+func TestParseTemplatesWithoutFragments(t *testing.T) {
+	fs := fstest.MapFS{
+		"templates/layout/base.html": {Data: []byte(testBaseHTML)},
+		"templates/pages/test.html":  {Data: []byte(`{{define "title"}}T{{end}}{{define "content"}}c{{end}}`)},
+	}
+
+	s := &Server{
+		mux:         http.NewServeMux(),
+		faviconsDir: t.TempDir(),
+	}
+	if err := s.parseTemplates(fs); err != nil {
+		t.Fatalf("parseTemplates without fragments dir should not error: %v", err)
+	}
+}
 
 func TestTemplateFuncMap(t *testing.T) {
 	fm := templateFuncMap(t.TempDir())

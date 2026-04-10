@@ -8,6 +8,31 @@ import (
 	"time"
 )
 
+func TestIsHTMXRequest(t *testing.T) {
+	t.Run("with HX-Request header", func(t *testing.T) {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.Header.Set("HX-Request", "true")
+		if !isHTMXRequest(r) {
+			t.Error("isHTMXRequest() = false, want true")
+		}
+	})
+
+	t.Run("without HX-Request header", func(t *testing.T) {
+		r := httptest.NewRequest("GET", "/", nil)
+		if isHTMXRequest(r) {
+			t.Error("isHTMXRequest() = true, want false")
+		}
+	})
+
+	t.Run("with wrong HX-Request value", func(t *testing.T) {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.Header.Set("HX-Request", "false")
+		if isHTMXRequest(r) {
+			t.Error("isHTMXRequest() = false, want false")
+		}
+	})
+}
+
 func TestPaginate(t *testing.T) {
 	tests := []struct {
 		name          string

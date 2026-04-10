@@ -102,6 +102,28 @@ func (s *Server) parseTemplates(templateFiles fs.FS) error {
 		s.templates[name] = tmpl
 	}
 
+	// Parse fragment templates (standalone, no base layout).
+	fragments, err := fs.ReadDir(templateFiles, "templates/fragments")
+	if err != nil {
+		// Directory may not exist yet — that's fine, skip.
+		return nil
+	}
+	for _, entry := range fragments {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		fragBytes, err := fs.ReadFile(templateFiles, "templates/fragments/"+name)
+		if err != nil {
+			return fmt.Errorf("reading fragment template %q: %w", name, err)
+		}
+		tmpl, err := template.New(name).Funcs(templateFuncMap(s.faviconsDir)).Parse(string(fragBytes))
+		if err != nil {
+			return fmt.Errorf("parsing fragment template %q: %w", name, err)
+		}
+		s.templates["fragments/"+name] = tmpl
+	}
+
 	return nil
 }
 
@@ -136,6 +158,21 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, tmpl string, dat
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.Execute(w, data); err != nil {
 		slog.Error("template execution error", "template", tmpl, "error", err)
+	}
+}
+
+// renderFragment executes a standalone fragment template (no base layout).
+// Fragment templates are stored under the "fragments/" prefix.
+func (s *Server) renderFragment(w http.ResponseWriter, tmpl string, data any) {
+	t, ok := s.templates["fragments/"+tmpl]
+	if !ok {
+		slog.Error("fragment template not found", "template", tmpl)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := t.Execute(w, data); err != nil {
+		slog.Error("fragment execution error", "template", tmpl, "error", err)
 	}
 }
 

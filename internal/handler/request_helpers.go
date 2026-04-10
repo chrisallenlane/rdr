@@ -10,6 +10,11 @@ import (
 	"github.com/chrisallenlane/rdr/internal/model"
 )
 
+// isHTMXRequest reports whether the request was made by HTMX.
+func isHTMXRequest(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true"
+}
+
 // refererPath returns the path component of the request's Referer header,
 // or fallback if the header is missing, unparseable, or has an empty path.
 // Using only the path prevents open redirects to external sites.
