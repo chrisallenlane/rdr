@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
@@ -135,6 +136,44 @@ func (s *Server) handleAddFeedToList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
+}
+
+func (s *Server) handleRenameList(w http.ResponseWriter, r *http.Request) {
+	user := middleware.UserFromContext(r.Context())
+
+	listID, ok := s.pathInt64(w, r, "id")
+	if !ok {
+		return
+	}
+
+	if !s.verifyOwnership(w, r, "lists", listID, user.ID) {
+		return
+	}
+
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		setFlash(w, "List name is required.")
+		http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
+		return
+	}
+
+	_, err := s.db.Exec(
+		"UPDATE lists SET name = ? WHERE id = ? AND user_id = ?",
+		name, listID, user.ID,
+	)
+	if err != nil {
+		if isUniqueViolation(err) {
+			setFlash(w, "A list with that name already exists.")
+			http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
+			return
+		}
+		slog.Error("renaming list", "error", err)
+		s.renderInternalError(w, r)
+		return
+	}
+
+	setFlash(w, "List renamed.")
 	http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
 }
 

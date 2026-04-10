@@ -17,6 +17,7 @@ const maxPollWorkers = 10
 // Poller periodically fetches all feeds and stores new items.
 type Poller struct {
 	db            *sql.DB
+	ctx           context.Context
 	interval      time.Duration
 	retentionDays int
 	faviconsDir   string
@@ -25,22 +26,23 @@ type Poller struct {
 
 // NewPoller creates a new Poller with the given database, poll interval,
 // retention period (in days), and favicons directory path. A retentionDays
-// value of 0 disables pruning.
-func NewPoller(db *sql.DB, interval time.Duration, retentionDays int, faviconsDir string) *Poller {
-	return &Poller{db: db, interval: interval, retentionDays: retentionDays, faviconsDir: faviconsDir}
+// value of 0 disables pruning. The context controls the lifetime of all poll
+// operations, including manually triggered syncs.
+func NewPoller(ctx context.Context, db *sql.DB, interval time.Duration, retentionDays int, faviconsDir string) *Poller {
+	return &Poller{ctx: ctx, db: db, interval: interval, retentionDays: retentionDays, faviconsDir: faviconsDir}
 }
 
-// Start blocks until ctx is cancelled. It runs an immediate poll cycle, then
-// polls on the configured interval. Run in a goroutine.
-func (p *Poller) Start(ctx context.Context) {
-	p.poll(ctx)
+// Start blocks until the poller's context is cancelled. It runs an immediate
+// poll cycle, then polls on the configured interval. Run in a goroutine.
+func (p *Poller) Start() {
+	p.poll(p.ctx)
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			p.poll(ctx)
-		case <-ctx.Done():
+			p.poll(p.ctx)
+		case <-p.ctx.Done():
 			return
 		}
 	}
@@ -48,11 +50,14 @@ func (p *Poller) Start(ctx context.Context) {
 
 // TriggerSync starts an async poll cycle if one is not already running.
 // Returns true if a sync was started, false if one is already in progress.
-func (p *Poller) TriggerSync(ctx context.Context) bool {
+// It uses the application context (from NewPoller) rather than the caller's
+// context, because the caller is typically an HTTP handler whose context
+// is cancelled as soon as the response is sent.
+func (p *Poller) TriggerSync(_ context.Context) bool {
 	if p.syncing.Load() {
 		return false
 	}
-	go p.poll(ctx)
+	go p.poll(p.ctx)
 	return true
 }
 

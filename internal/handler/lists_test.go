@@ -108,6 +108,203 @@ func TestHandleCreateList(t *testing.T) {
 	})
 }
 
+func TestHandleRenameList(t *testing.T) {
+	t.Run("valid rename", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		result, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			userID, "Old Name",
+		)
+		if err != nil {
+			t.Fatalf("inserting list: %v", err)
+		}
+		listID, _ := result.LastInsertId()
+
+		form := url.Values{"name": {"New Name"}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/rename", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+		}
+		if loc := rec.Header().Get("Location"); loc != fmt.Sprintf("/lists/%d", listID) {
+			t.Errorf("Location = %q, want /lists/%d", loc, listID)
+		}
+
+		var name string
+		if err := s.db.QueryRow(
+			"SELECT name FROM lists WHERE id = ?", listID,
+		).Scan(&name); err != nil {
+			t.Fatalf("querying list name: %v", err)
+		}
+		if name != "New Name" {
+			t.Errorf("name = %q, want %q", name, "New Name")
+		}
+	})
+
+	t.Run("empty name", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		result, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			userID, "My List",
+		)
+		if err != nil {
+			t.Fatalf("inserting list: %v", err)
+		}
+		listID, _ := result.LastInsertId()
+
+		form := url.Values{"name": {"  "}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/rename", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+		}
+
+		// Name should be unchanged.
+		var name string
+		if err := s.db.QueryRow(
+			"SELECT name FROM lists WHERE id = ?", listID,
+		).Scan(&name); err != nil {
+			t.Fatalf("querying list name: %v", err)
+		}
+		if name != "My List" {
+			t.Errorf("name = %q, want %q", name, "My List")
+		}
+	})
+
+	t.Run("duplicate name", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		if _, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			userID, "Taken Name",
+		); err != nil {
+			t.Fatalf("inserting first list: %v", err)
+		}
+
+		result, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			userID, "Other List",
+		)
+		if err != nil {
+			t.Fatalf("inserting second list: %v", err)
+		}
+		listID, _ := result.LastInsertId()
+
+		form := url.Values{"name": {"Taken Name"}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/rename", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+		}
+
+		// Name should be unchanged.
+		var name string
+		if err := s.db.QueryRow(
+			"SELECT name FROM lists WHERE id = ?", listID,
+		).Scan(&name); err != nil {
+			t.Fatalf("querying list name: %v", err)
+		}
+		if name != "Other List" {
+			t.Errorf("name = %q, want %q", name, "Other List")
+		}
+	})
+
+	t.Run("non-existent list", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+
+		form := url.Values{"name": {"New Name"}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			"/lists/99999/rename",
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("another user's list", func(t *testing.T) {
+		s := newTestServer(t)
+		ownerID := createTestUser(t, s, "owner", "testpass1")
+		attackerID := createTestUser(t, s, "attacker", "testpass1")
+
+		result, err := s.db.Exec(
+			"INSERT INTO lists (user_id, name) VALUES (?, ?)",
+			ownerID, "Owner's List",
+		)
+		if err != nil {
+			t.Fatalf("inserting list: %v", err)
+		}
+		listID, _ := result.LastInsertId()
+
+		form := url.Values{"name": {"Hijacked"}}
+		req := authedRequest(
+			t, s, attackerID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/rename", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
+		}
+
+		// Name should be unchanged.
+		var name string
+		if err := s.db.QueryRow(
+			"SELECT name FROM lists WHERE id = ?", listID,
+		).Scan(&name); err != nil {
+			t.Fatalf("querying list name: %v", err)
+		}
+		if name != "Owner's List" {
+			t.Errorf("name = %q, want %q", name, "Owner's List")
+		}
+	})
+}
+
 func TestHandleDeleteList(t *testing.T) {
 	t.Run("delete own list", func(t *testing.T) {
 		s := newTestServer(t)

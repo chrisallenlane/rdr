@@ -52,12 +52,12 @@ func main() {
 
 	// Start background feed poller.
 	var wg sync.WaitGroup
-	p := poller.NewPoller(db, cfg.PollInterval, cfg.RetentionDays, cfg.FaviconsDir)
+	p := poller.NewPoller(ctx, db, cfg.PollInterval, cfg.RetentionDays, cfg.FaviconsDir)
 	srv.SetSyncFunc(p.TriggerSync)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		p.Start(ctx)
+		p.Start()
 	}()
 
 	go func() {

@@ -37,6 +37,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /lists", protected(http.HandlerFunc(s.handleLists)))
 	s.mux.Handle("POST /lists", protected(http.HandlerFunc(s.handleCreateList)))
 	s.mux.Handle("POST /lists/{id}/delete", protected(http.HandlerFunc(s.handleDeleteList)))
+	s.mux.Handle("POST /lists/{id}/rename", protected(http.HandlerFunc(s.handleRenameList)))
 	s.mux.Handle("GET /lists/{id}", protected(http.HandlerFunc(s.handleListDetail)))
 	s.mux.Handle("POST /lists/{id}/feeds", protected(http.HandlerFunc(s.handleAddFeedToList)))
 	s.mux.Handle("POST /lists/{id}/feeds/{feedID}/delete", protected(http.HandlerFunc(s.handleRemoveFeedFromList)))
