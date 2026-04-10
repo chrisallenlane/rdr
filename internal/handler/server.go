@@ -25,6 +25,7 @@ type Server struct {
 	faviconsDir  string
 	feedResolver func(context.Context, string) (string, error) // resolves a URL to a feed URL
 	syncFeeds    func(ctx context.Context) bool                // triggers an async feed sync
+	syncStatus   func() bool                                   // returns true if sync in progress
 }
 
 // PageData is the common data structure passed to every template render.
@@ -58,6 +59,11 @@ func NewServer(db *sql.DB, staticFiles fs.FS, templateFiles fs.FS, faviconsDir s
 // SetSyncFunc sets the function used to trigger a feed sync.
 func (s *Server) SetSyncFunc(fn func(ctx context.Context) bool) {
 	s.syncFeeds = fn
+}
+
+// SetSyncStatusFunc sets the function used to check if a sync is in progress.
+func (s *Server) SetSyncStatusFunc(fn func() bool) {
+	s.syncStatus = fn
 }
 
 // ServeHTTP applies security headers and delegates to the internal ServeMux.

@@ -241,6 +241,30 @@
     });
   }
 
+  // --- HTMX: sync button polling for completion ---
+  document.body.addEventListener("htmx:afterRequest", function (e) {
+    var form = e.detail.elt;
+    if (!form.classList || !form.classList.contains("sync-form")) return;
+    if (!e.detail.successful) return;
+
+    var btn = form.querySelector(".sync-button");
+    if (btn) btn.classList.add("syncing");
+
+    var poll = setInterval(function () {
+      fetch("/feeds/sync/status")
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data.syncing) {
+            clearInterval(poll);
+            if (btn) btn.classList.remove("syncing");
+            window.location.reload();
+          }
+        });
+    }, 2000);
+  });
+
   // --- HTMX: reset forms with data-reset-on-success after successful submit ---
   document.body.addEventListener("htmx:afterRequest", function (e) {
     if (e.detail.successful && e.detail.elt.hasAttribute("data-reset-on-success")) {

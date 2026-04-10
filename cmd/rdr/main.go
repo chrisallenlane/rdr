@@ -54,6 +54,7 @@ func main() {
 	var wg sync.WaitGroup
 	p := poller.NewPoller(ctx, db, cfg.PollInterval, cfg.RetentionDays, cfg.FaviconsDir)
 	srv.SetSyncFunc(p.TriggerSync)
+	srv.SetSyncStatusFunc(p.IsSyncing)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

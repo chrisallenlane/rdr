@@ -31,6 +31,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /feeds", protected(http.HandlerFunc(s.handleFeeds)))
 	s.mux.Handle("POST /feeds", protected(http.HandlerFunc(s.handleAddFeed)))
 	s.mux.Handle("POST /feeds/sync", protected(http.HandlerFunc(s.handleSync)))
+	s.mux.Handle("GET /feeds/sync/status", protected(http.HandlerFunc(s.handleSyncStatus)))
 	s.mux.Handle("POST /feeds/{id}/delete", protected(http.HandlerFunc(s.handleDeleteFeed)))
 	s.mux.Handle("GET /feeds/export", protected(http.HandlerFunc(s.handleExportOPML)))
 	s.mux.Handle("POST /feeds/import", protected(http.HandlerFunc(s.handleImportOPML)))

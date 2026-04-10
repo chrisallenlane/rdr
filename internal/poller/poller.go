@@ -48,6 +48,11 @@ func (p *Poller) Start() {
 	}
 }
 
+// IsSyncing reports whether a poll cycle is currently in progress.
+func (p *Poller) IsSyncing() bool {
+	return p.syncing.Load()
+}
+
 // TriggerSync starts an async poll cycle if one is not already running.
 // Returns true if a sync was started, false if one is already in progress.
 // It uses the application context (from NewPoller) rather than the caller's
