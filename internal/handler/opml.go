@@ -115,35 +115,42 @@ const maxOPMLSize = 1 << 20
 
 func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
+	htmx := isHTMXRequest(r)
+
+	flashAndRedirect := func(msg string) {
+		if htmx {
+			flash(w, r, msg)
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			return
+		}
+		setFlash(w, msg)
+		http.Redirect(w, r, "/feeds", http.StatusSeeOther)
+	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxOPMLSize)
 
 	file, _, err := r.FormFile("opml")
 	if err != nil {
-		setFlash(w, "Please select an OPML file to upload.")
-		http.Redirect(w, r, "/feeds", http.StatusSeeOther)
+		flashAndRedirect("Please select an OPML file to upload.")
 		return
 	}
 	defer func() { _ = file.Close() }()
 
 	data, err := io.ReadAll(file)
 	if err != nil {
-		setFlash(w, "File too large (max 1 MB).")
-		http.Redirect(w, r, "/feeds", http.StatusSeeOther)
+		flashAndRedirect("File too large (max 1 MB).")
 		return
 	}
 
 	var doc opmlDoc
 	if err := xml.Unmarshal(data, &doc); err != nil {
-		setFlash(w, "Invalid OPML file.")
-		http.Redirect(w, r, "/feeds", http.StatusSeeOther)
+		flashAndRedirect("Invalid OPML file.")
 		return
 	}
 
 	outlines := collectFeedOutlines(doc.Body.Outlines)
 	if len(outlines) == 0 {
-		setFlash(w, "No feeds found in the uploaded file.")
-		http.Redirect(w, r, "/feeds", http.StatusSeeOther)
+		flashAndRedirect("No feeds found in the uploaded file.")
 		return
 	}
 
@@ -203,6 +210,18 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 		go s.fetchImportedFeeds(context.WithoutCancel(r.Context()), newFeeds)
 	} else {
 		msg += "."
+	}
+
+	if htmx {
+		feeds, err := s.queryUserFeedsWithCounts(user.ID)
+		if err != nil {
+			slog.Error("querying feeds", "error", err)
+			s.renderInternalError(w, r)
+			return
+		}
+		flash(w, r, msg)
+		s.renderFragment(w, "feeds_table.html", feeds)
+		return
 	}
 
 	setFlash(w, msg)

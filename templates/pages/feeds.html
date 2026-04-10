@@ -24,7 +24,12 @@
 <p><mark>{{.Content.Error}}</mark></p>
 {{end}}
 
-<form method="post" action="/feeds/import" enctype="multipart/form-data">
+<form method="post" action="/feeds/import" enctype="multipart/form-data"
+      hx-post="/feeds/import"
+      hx-target="#feeds-table"
+      hx-swap="outerHTML"
+      hx-encoding="multipart/form-data"
+      data-reset-on-success>
     <fieldset role="group">
         <input type="file" name="opml" aria-label="OPML file" accept=".opml,.xml" required>
         <button type="submit">Import OPML</button>
