@@ -7,6 +7,7 @@ on:
 jobs:
   build:
     runs-on: linux-amd64
+    container: catthehacker/ubuntu:act-latest
     steps:
       - uses: actions/checkout@v4
 
