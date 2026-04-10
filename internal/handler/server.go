@@ -2,6 +2,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/chrisallenlane/rdr/internal/discover"
 	"github.com/chrisallenlane/rdr/internal/middleware"
@@ -247,9 +249,24 @@ func setFlash(w http.ResponseWriter, message string) {
 type htmxTriggers map[string]any
 
 // setHTMXTriggers writes a merged HX-Trigger response header as JSON.
+// Non-ASCII characters are escaped to \uXXXX sequences because HTTP
+// headers only support ASCII reliably.
 func setHTMXTriggers(w http.ResponseWriter, triggers htmxTriggers) {
-	b, _ := json.Marshal(triggers)
-	w.Header().Set("HX-Trigger", string(b))
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(triggers)
+	// Encode appends a newline; also escape non-ASCII to \uXXXX.
+	s := strings.TrimSpace(buf.String())
+	var ascii strings.Builder
+	for _, r := range s {
+		if r > 127 {
+			fmt.Fprintf(&ascii, "\\u%04x", r)
+		} else {
+			ascii.WriteRune(r)
+		}
+	}
+	w.Header().Set("HX-Trigger", ascii.String())
 }
 
 // flash sends a flash message via the appropriate mechanism: HX-Trigger

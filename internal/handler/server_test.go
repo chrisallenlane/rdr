@@ -93,6 +93,26 @@ func TestSetHTMXTriggers(t *testing.T) {
 		}
 	})
 
+	t.Run("non-ASCII escaped to unicode", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		setHTMXTriggers(rec, htmxTriggers{"showFlash": "List café renamed."})
+		got := rec.Header().Get("HX-Trigger")
+		// Verify the header is pure ASCII.
+		for _, b := range []byte(got) {
+			if b > 127 {
+				t.Fatalf("header contains non-ASCII byte %x in %q", b, got)
+			}
+		}
+		// Verify it round-trips back correctly.
+		var m map[string]any
+		if err := json.Unmarshal([]byte(got), &m); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		if m["showFlash"] != "List café renamed." {
+			t.Errorf("showFlash = %v, want 'List café renamed.'", m["showFlash"])
+		}
+	})
+
 	t.Run("multiple events", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		setHTMXTriggers(rec, htmxTriggers{

@@ -218,6 +218,10 @@
     });
   }
 
+  // --- HTMX event listeners ---
+  // Security: always use textContent (not innerHTML) for values from
+  // HX-Trigger headers to prevent XSS via server response injection.
+
   // --- HTMX: sync button polling for completion ---
   document.body.addEventListener("htmx:afterRequest", function (e) {
     var form = e.detail.elt;
