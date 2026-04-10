@@ -153,29 +153,6 @@
     });
   }
 
-  // --- Star buttons: toggle via fetch to avoid history pollution ---
-  function initStarButtons() {
-    var buttons = document.querySelectorAll(".star-button");
-    buttons.forEach(function (btn) {
-      var form = btn.closest("form");
-      if (!form) return;
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        fetch(form.action, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        }).then(function (res) {
-          if (!res.ok) return;
-          var starred = btn.textContent.trim() === "☆";
-          btn.textContent = starred ? "★" : "☆";
-          btn.setAttribute(
-            "aria-label",
-            (starred ? "Unstar" : "Star") + " this item",
-          );
-        });
-      });
-    });
-  }
 
   // --- Rename form: submit via fetch to avoid history pollution ---
   function initRenameForms() {
@@ -303,7 +280,6 @@
   initSidebar();
   initThemeSelect();
   initSyncButtons();
-  initStarButtons();
   initRenameForms();
   initShortcutsHelp();
 })();

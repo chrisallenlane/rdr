@@ -38,5 +38,19 @@ func (s *Server) handleToggleStar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if isHTMXRequest(r) {
+		var starred int
+		if err := s.db.QueryRow("SELECT starred FROM items WHERE id = ?", itemID).Scan(&starred); err != nil {
+			slog.Error("querying star state", "error", err)
+			s.renderInternalError(w, r)
+			return
+		}
+		s.renderFragment(w, "star_button.html", struct {
+			ID      int64
+			Starred bool
+		}{itemID, starred == 1})
+		return
+	}
+
 	http.Redirect(w, r, refererPath(r, fmt.Sprintf("/items/%d", itemID)), http.StatusSeeOther)
 }

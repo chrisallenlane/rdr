@@ -30,6 +30,9 @@ var testTemplateFS = fstest.MapFS{
 	"templates/pages/search.html":      {Data: []byte(`{{define "title"}}Search{{end}}{{define "content"}}search{{end}}`)},
 	"templates/pages/lists.html":       {Data: []byte(`{{define "title"}}Lists{{end}}{{define "content"}}lists{{end}}`)},
 	"templates/pages/list_detail.html": {Data: []byte(`{{define "title"}}List{{end}}{{define "content"}}list_detail{{end}}`)},
+
+	// Fragment templates (standalone, no base layout).
+	"templates/fragments/star_button.html": {Data: []byte(`<form>{{if .Starred}}starred{{else}}unstarred{{end}}</form>`)},
 }
 
 // newTestServer creates a *Server backed by an in-memory SQLite database and

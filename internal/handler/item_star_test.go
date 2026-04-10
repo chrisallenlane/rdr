@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -94,6 +95,58 @@ func TestHandleToggleStar(t *testing.T) {
 		}
 		if got := starredValue(t, s, itemID); got != 0 {
 			t.Errorf("starred = %d, want 0 after toggle off", got)
+		}
+	})
+
+	t.Run("HTMX toggle on returns fragment", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		itemID := insertFeedAndItem(t, s, userID)
+
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost, fmt.Sprintf("/items/%d/star", itemID),
+		)
+		req.Header.Set("HX-Request", "true")
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "starred") {
+			t.Errorf("body = %q, want to contain 'starred'", body)
+		}
+		if got := starredValue(t, s, itemID); got != 1 {
+			t.Errorf("starred = %d, want 1", got)
+		}
+	})
+
+	t.Run("HTMX toggle off returns fragment", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		itemID := insertFeedAndItem(t, s, userID)
+
+		s.db.Exec("UPDATE items SET starred = 1 WHERE id = ?", itemID)
+
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost, fmt.Sprintf("/items/%d/star", itemID),
+		)
+		req.Header.Set("HX-Request", "true")
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "unstarred") {
+			t.Errorf("body = %q, want to contain 'unstarred'", body)
+		}
+		if got := starredValue(t, s, itemID); got != 0 {
+			t.Errorf("starred = %d, want 0", got)
 		}
 	})
 
