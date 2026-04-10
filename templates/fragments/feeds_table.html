@@ -1,39 +1,5 @@
-{{define "title"}}Feeds — rdr{{end}}
-{{define "content"}}
-<h1>Feeds</h1>
-
-<div class="feeds-actions">
-    <form method="post" action="/feeds"
-          hx-post="/feeds"
-          hx-target="#feeds-table"
-          hx-swap="outerHTML"
-          data-reset-on-success>
-        <fieldset role="group">
-            <input type="url" name="url" aria-label="Feed URL" placeholder="https://example.com" required>
-            <button type="submit">Add Feed</button>
-        </fieldset>
-    </form>
-    <form method="post" action="/feeds/sync" class="sync-form"
-          hx-post="/feeds/sync"
-          hx-swap="none">
-        <button type="submit" class="sync-button" aria-label="Sync all feeds"><span class="sync-icon">⟳</span> Sync Now</button>
-    </form>
-</div>
-
-{{if .Content.Error}}
-<p><mark>{{.Content.Error}}</mark></p>
-{{end}}
-
-<form method="post" action="/feeds/import" enctype="multipart/form-data">
-    <fieldset role="group">
-        <input type="file" name="opml" aria-label="OPML file" accept=".opml,.xml" required>
-        <button type="submit">Import OPML</button>
-        <a href="/feeds/export" role="button">Export OPML</a>
-    </fieldset>
-</form>
-
 <div id="feeds-table">
-{{if .Content.Feeds}}
+{{if .}}
 <table>
     <thead>
         <tr>
@@ -44,7 +10,7 @@
         </tr>
     </thead>
     <tbody>
-        {{range .Content.Feeds}}
+        {{range .}}
         <tr>
             <td>
                 <a href="/items?feed={{.ID}}">{{feedName .}}</a>
@@ -82,4 +48,3 @@
 <p>No feeds yet. Add your first feed above.</p>
 {{end}}
 </div>
-{{end}}
