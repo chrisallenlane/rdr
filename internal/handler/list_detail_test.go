@@ -213,6 +213,36 @@ func TestHandleAddFeedToList(t *testing.T) {
 		}
 	})
 
+	t.Run("HTMX add feed returns fragment", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		listID := insertTestList(t, s, userID, "My List")
+		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
+
+		form := url.Values{"feed_id": {fmt.Sprintf("%d", feedID)}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+			t.Errorf("Content-Type = %q, want text/html", ct)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
+		}
+	})
+
 	t.Run("invalid feed_id returns 400", func(t *testing.T) {
 		s := newTestServer(t)
 		userID := createTestUser(t, s, "testuser", "testpass1")
@@ -276,6 +306,31 @@ func TestHandleRemoveFeedFromList(t *testing.T) {
 		}
 		if count != 0 {
 			t.Errorf("list_feeds row count = %d, want 0", count)
+		}
+	})
+
+	t.Run("HTMX remove feed returns fragment", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		listID := insertTestList(t, s, userID, "My List")
+		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
+
+		s.db.Exec("INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)", listID, feedID)
+
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds/%d/delete", listID, feedID),
+		)
+		req.Header.Set("HX-Request", "true")
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if trigger := rec.Header().Get("HX-Trigger"); !strings.Contains(trigger, "showFlash") {
+			t.Errorf("HX-Trigger = %q, want to contain showFlash", trigger)
 		}
 	})
 

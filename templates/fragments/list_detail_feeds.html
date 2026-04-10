@@ -1,28 +1,14 @@
-{{define "title"}}{{.Content.List.Name}} — rdr{{end}}
-{{define "content"}}
-<header class="list-detail-header">
-    <form method="post" action="/lists/{{.Content.List.ID}}/rename" hx-post="/lists/{{.Content.List.ID}}/rename" hx-swap="none">
-        <fieldset role="group">
-            <input type="text" name="name" value="{{.Content.List.Name}}" aria-label="List name" required>
-            <button type="submit">Rename</button>
-        </fieldset>
-    </form>
-    <nav>
-        <a href="/lists">&larr; Back to lists</a> &middot; <a href="/items?list={{.Content.List.ID}}">View items</a>
-    </nav>
-</header>
-
 <section class="list-detail-section" id="feeds-in-list">
     <h2>Feeds in this list</h2>
-    {{if .Content.InList}}
+    {{if .InList}}
     <table>
         <tbody>
-            {{range .Content.InList}}
+            {{range .InList}}
             <tr>
                 <td>{{feedName .}}</td>
                 <td>
-                    <form method="post" action="/lists/{{$.Content.List.ID}}/feeds/{{.ID}}/delete"
-                          hx-post="/lists/{{$.Content.List.ID}}/feeds/{{.ID}}/delete"
+                    <form method="post" action="/lists/{{$.List.ID}}/feeds/{{.ID}}/delete"
+                          hx-post="/lists/{{$.List.ID}}/feeds/{{.ID}}/delete"
                           hx-target="#feeds-in-list"
                           hx-swap="outerHTML">
                         <button type="submit" aria-label="Remove {{feedName .}}">Remove</button>
@@ -37,17 +23,17 @@
     {{end}}
 </section>
 
-<section class="list-detail-section" id="feeds-available">
+<section class="list-detail-section" id="feeds-available" hx-swap-oob="outerHTML">
     <h2>Available feeds</h2>
-    {{if .Content.NotInList}}
+    {{if .NotInList}}
     <table>
         <tbody>
-            {{range .Content.NotInList}}
+            {{range .NotInList}}
             <tr>
                 <td>{{feedName .}}</td>
                 <td>
-                    <form method="post" action="/lists/{{$.Content.List.ID}}/feeds"
-                          hx-post="/lists/{{$.Content.List.ID}}/feeds"
+                    <form method="post" action="/lists/{{$.List.ID}}/feeds"
+                          hx-post="/lists/{{$.List.ID}}/feeds"
                           hx-target="#feeds-in-list"
                           hx-swap="outerHTML">
                         <input type="hidden" name="feed_id" value="{{.ID}}">
@@ -62,4 +48,3 @@
     <p>All feeds are already in this list.</p>
     {{end}}
 </section>
-{{end}}

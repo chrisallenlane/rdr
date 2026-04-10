@@ -20,6 +20,46 @@ type listDetailData struct {
 	NotInList []model.Feed
 }
 
+// queryListFeeds returns feeds in and not in the given list for the user.
+func (s *Server) queryListFeeds(listID, userID int64) (inList, notInList []model.Feed, err error) {
+	inRows, err := s.db.Query(
+		`SELECT f.id, f.title, f.url FROM feeds f
+		 JOIN list_feeds lf ON f.id = lf.feed_id
+		 WHERE lf.list_id = ? AND f.user_id = ?
+		 ORDER BY f.title ASC`,
+		listID, userID,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("querying feeds in list: %w", err)
+	}
+	defer func() { _ = inRows.Close() }()
+
+	inList, err = scanFeeds(inRows)
+	if err != nil {
+		return nil, nil, fmt.Errorf("scanning feeds in list: %w", err)
+	}
+
+	outRows, err := s.db.Query(
+		`SELECT f.id, f.title, f.url FROM feeds f
+		 WHERE f.user_id = ? AND f.id NOT IN (
+		     SELECT feed_id FROM list_feeds WHERE list_id = ?
+		 )
+		 ORDER BY f.title ASC`,
+		userID, listID,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("querying feeds not in list: %w", err)
+	}
+	defer func() { _ = outRows.Close() }()
+
+	notInList, err = scanFeeds(outRows)
+	if err != nil {
+		return nil, nil, fmt.Errorf("scanning feeds not in list: %w", err)
+	}
+
+	return inList, notInList, nil
+}
+
 func (s *Server) handleListDetail(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 
@@ -48,47 +88,9 @@ func (s *Server) handleListDetail(w http.ResponseWriter, r *http.Request) {
 		list.CreatedAt = *t
 	}
 
-	// Query feeds IN this list.
-	inRows, err := s.db.Query(
-		`SELECT f.id, f.title, f.url FROM feeds f
-		 JOIN list_feeds lf ON f.id = lf.feed_id
-		 WHERE lf.list_id = ? AND f.user_id = ?
-		 ORDER BY f.title ASC`,
-		listID, user.ID,
-	)
+	inList, notInList, err := s.queryListFeeds(listID, user.ID)
 	if err != nil {
-		slog.Error("querying feeds in list", "error", err)
-		s.renderInternalError(w, r)
-		return
-	}
-	defer func() { _ = inRows.Close() }()
-
-	inList, err := scanFeeds(inRows)
-	if err != nil {
-		slog.Error("scanning feeds in list", "error", err)
-		s.renderInternalError(w, r)
-		return
-	}
-
-	// Query feeds NOT in this list.
-	outRows, err := s.db.Query(
-		`SELECT f.id, f.title, f.url FROM feeds f
-		 WHERE f.user_id = ? AND f.id NOT IN (
-		     SELECT feed_id FROM list_feeds WHERE list_id = ?
-		 )
-		 ORDER BY f.title ASC`,
-		user.ID, listID,
-	)
-	if err != nil {
-		slog.Error("querying feeds not in list", "error", err)
-		s.renderInternalError(w, r)
-		return
-	}
-	defer func() { _ = outRows.Close() }()
-
-	notInList, err := scanFeeds(outRows)
-	if err != nil {
-		slog.Error("scanning feeds not in list", "error", err)
+		slog.Error("querying list feeds", "error", err)
 		s.renderInternalError(w, r)
 		return
 	}
@@ -133,6 +135,22 @@ func (s *Server) handleAddFeedToList(w http.ResponseWriter, r *http.Request) {
 	if err != nil && !isUniqueViolation(err) {
 		slog.Error("adding feed to list", "error", err)
 		s.renderInternalError(w, r)
+		return
+	}
+
+	if isHTMXRequest(r) {
+		inList, notInList, err := s.queryListFeeds(listID, user.ID)
+		if err != nil {
+			slog.Error("querying list feeds", "error", err)
+			s.renderInternalError(w, r)
+			return
+		}
+		flash(w, r, "Feed added to list.")
+		s.renderFragment(w, "list_detail_feeds.html", listDetailData{
+			List:      model.List{ID: listID},
+			InList:    inList,
+			NotInList: notInList,
+		})
 		return
 	}
 
@@ -221,6 +239,22 @@ func (s *Server) handleRemoveFeedFromList(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		slog.Error("removing feed from list", "error", err)
 		s.renderInternalError(w, r)
+		return
+	}
+
+	if isHTMXRequest(r) {
+		inList, notInList, err := s.queryListFeeds(listID, user.ID)
+		if err != nil {
+			slog.Error("querying list feeds", "error", err)
+			s.renderInternalError(w, r)
+			return
+		}
+		flash(w, r, "Feed removed from list.")
+		s.renderFragment(w, "list_detail_feeds.html", listDetailData{
+			List:      model.List{ID: listID},
+			InList:    inList,
+			NotInList: notInList,
+		})
 		return
 	}
 
