@@ -64,25 +64,45 @@ func scanFeeds(rows *sql.Rows) ([]model.Feed, error) {
 	return feeds, rows.Err()
 }
 
-// queryUserFeeds returns the id, title, and url of every feed owned by userID,
-// ordered by title. It is used to populate sidebar filter links.
+// queryUserFeeds returns the id, title, url, and unread count of every feed
+// owned by userID, ordered by title. It is used to populate sidebar filter
+// links. It does not use scanFeeds because it selects an additional column.
 func queryUserFeeds(db *sql.DB, userID int64) ([]model.Feed, error) {
 	rows, err := db.Query(
-		"SELECT id, title, url FROM feeds WHERE user_id = ? ORDER BY title",
+		`SELECT f.id, f.title, f.url,
+		        (SELECT COUNT(*) FROM items i WHERE i.feed_id = f.id AND i.read = 0) AS unread_count
+		 FROM feeds f
+		 WHERE f.user_id = ?
+		 ORDER BY f.title`,
 		userID,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanFeeds(rows)
+
+	var feeds []model.Feed
+	for rows.Next() {
+		var f model.Feed
+		if err := rows.Scan(&f.ID, &f.Title, &f.URL, &f.UnreadCount); err != nil {
+			return nil, err
+		}
+		feeds = append(feeds, f)
+	}
+	return feeds, rows.Err()
 }
 
-// queryUserLists returns the id and name of every list owned by userID,
-// ordered by name. It is used to populate sidebar filter links.
+// queryUserLists returns the id, name, and unread count of every list owned by
+// userID, ordered by name. It is used to populate sidebar filter links.
 func queryUserLists(db *sql.DB, userID int64) ([]model.List, error) {
 	rows, err := db.Query(
-		"SELECT id, name FROM lists WHERE user_id = ? ORDER BY name ASC",
+		`SELECT l.id, l.name,
+		        (SELECT COUNT(*) FROM items i
+		         JOIN list_feeds lf ON lf.feed_id = i.feed_id
+		         WHERE lf.list_id = l.id AND i.read = 0) AS unread_count
+		 FROM lists l
+		 WHERE l.user_id = ?
+		 ORDER BY l.name ASC`,
 		userID,
 	)
 	if err != nil {
@@ -93,7 +113,7 @@ func queryUserLists(db *sql.DB, userID int64) ([]model.List, error) {
 	var lists []model.List
 	for rows.Next() {
 		var l model.List
-		if err := rows.Scan(&l.ID, &l.Name); err != nil {
+		if err := rows.Scan(&l.ID, &l.Name, &l.UnreadCount); err != nil {
 			return nil, err
 		}
 		lists = append(lists, l)

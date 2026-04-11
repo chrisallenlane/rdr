@@ -12,7 +12,7 @@
             <summary>Feeds</summary>
             <ul>
                 {{range .Content.Feeds}}
-                <li><a href="/items?feed={{.ID}}"{{if eq .ID $.Content.FilterFeed}} aria-current="true"{{end}}>{{feedName .}}</a></li>
+                <li><a href="/items?feed={{.ID}}"{{if eq .ID $.Content.FilterFeed}} aria-current="true"{{end}}>{{if .UnreadCount}}<strong>{{feedName .}}</strong>{{else}}{{feedName .}}{{end}}</a></li>
                 {{end}}
             </ul>
         </details>
@@ -21,7 +21,7 @@
             <summary>Lists</summary>
             <ul>
                 {{range .Content.Lists}}
-                <li><a href="/items?list={{.ID}}"{{if eq .ID $.Content.FilterList}} aria-current="true"{{end}}>{{.Name}}</a></li>
+                <li><a href="/items?list={{.ID}}"{{if eq .ID $.Content.FilterList}} aria-current="true"{{end}}>{{if .UnreadCount}}<strong>{{.Name}}</strong>{{else}}{{.Name}}{{end}}</a></li>
                 {{end}}
             </ul>
         </details>

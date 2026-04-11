@@ -37,15 +37,17 @@ type Feed struct {
 	ConsecutiveFailures int
 	CreatedAt           time.Time
 	ItemCount           int // computed, not stored
+	UnreadCount         int // computed, not stored
 }
 
 // List represents a user-defined grouping of feeds.
 type List struct {
-	ID        int64
-	UserID    int64
-	Name      string
-	CreatedAt time.Time
-	FeedCount int // computed, not stored
+	ID          int64
+	UserID      int64
+	Name        string
+	CreatedAt   time.Time
+	FeedCount   int // computed, not stored
+	UnreadCount int // computed, not stored
 }
 
 // Item represents a single entry within a feed.
