@@ -46,8 +46,12 @@ type opmlOutline struct {
 func (s *Server) handleExportOPML(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 
-	rows, err := s.db.Query(
-		"SELECT url, title, site_url FROM feeds WHERE user_id = ? ORDER BY title ASC, url ASC",
+	rows, err := s.db.Query(`
+		SELECT f.url, f.title, f.site_url, COALESCE(l.name, '') AS list_name
+		FROM feeds f
+		LEFT JOIN lists l ON f.list_id = l.id
+		WHERE f.user_id = ?
+		ORDER BY list_name ASC, f.title ASC, f.url ASC`,
 		user.ID,
 	)
 	if err != nil {
@@ -57,10 +61,16 @@ func (s *Server) handleExportOPML(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	var outlines []opmlOutline
+	// folderOutlines collects folder outlines keyed by list name.
+	folderOutlines := make(map[string]*opmlOutline)
+	// folderOrder preserves the insertion order of folder names.
+	var folderOrder []string
+	// topLevel collects feeds that belong to no list.
+	var topLevel []opmlOutline
+
 	for rows.Next() {
-		var feedURL, title, siteURL string
-		if err := rows.Scan(&feedURL, &title, &siteURL); err != nil {
+		var feedURL, title, siteURL, listName string
+		if err := rows.Scan(&feedURL, &title, &siteURL, &listName); err != nil {
 			slog.Error("scanning feed for OPML export", "error", err)
 			s.renderInternalError(w, r)
 			return
@@ -71,19 +81,40 @@ func (s *Server) handleExportOPML(w http.ResponseWriter, r *http.Request) {
 			text = feedURL
 		}
 
-		outlines = append(outlines, opmlOutline{
+		feedOutline := opmlOutline{
 			Type:    "rss",
 			Text:    text,
 			Title:   title,
 			XMLURL:  feedURL,
 			HTMLURL: siteURL,
-		})
+		}
+
+		if listName == "" {
+			topLevel = append(topLevel, feedOutline)
+		} else {
+			if _, exists := folderOutlines[listName]; !exists {
+				folderOutlines[listName] = &opmlOutline{Text: listName}
+				folderOrder = append(folderOrder, listName)
+			}
+			folderOutlines[listName].Outlines = append(
+				folderOutlines[listName].Outlines,
+				feedOutline,
+			)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		slog.Error("iterating feeds for OPML export", "error", err)
 		s.renderInternalError(w, r)
 		return
 	}
+
+	// Build the top-level outline list: folders first (alphabetical), then
+	// ungrouped feeds.
+	outlines := make([]opmlOutline, 0, len(folderOrder)+len(topLevel))
+	for _, name := range folderOrder {
+		outlines = append(outlines, *folderOutlines[name])
+	}
+	outlines = append(outlines, topLevel...)
 
 	doc := opmlDoc{
 		Version: "2.0",
@@ -148,16 +179,43 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outlines := collectFeedOutlines(doc.Body.Outlines)
-	if len(outlines) == 0 {
+	feeds := collectFeedsWithFolder(doc.Body.Outlines, "")
+	if len(feeds) == 0 {
 		flashAndRedirect("No feeds found in the uploaded file.")
 		return
 	}
 
+	// Cache of folder name → list ID to avoid repeated queries.
+	listCache := make(map[string]int64)
+
+	// resolveListID returns the list ID for the given folder name, creating
+	// the list if it does not already exist.
+	resolveListID := func(folderName string) (int64, error) {
+		if id, ok := listCache[folderName]; ok {
+			return id, nil
+		}
+		if _, err := s.db.Exec(
+			"INSERT OR IGNORE INTO lists (user_id, name) VALUES (?, ?)",
+			user.ID, folderName,
+		); err != nil {
+			return 0, err
+		}
+		var id int64
+		if err := s.db.QueryRow(
+			"SELECT id FROM lists WHERE user_id = ? AND name = ?",
+			user.ID, folderName,
+		).Scan(&id); err != nil {
+			return 0, err
+		}
+		listCache[folderName] = id
+		return id, nil
+	}
+
 	var imported, duplicates, skipped int
 	var newFeeds []*model.Feed
-	for _, o := range outlines {
-		feedURL := strings.TrimSpace(o.XMLURL)
+
+	for _, fw := range feeds {
+		feedURL := strings.TrimSpace(fw.outline.XMLURL)
 		parsed, err := url.Parse(feedURL)
 		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 			skipped++
@@ -166,7 +224,7 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 
 		result, err := s.db.Exec(
 			"INSERT OR IGNORE INTO feeds (user_id, url, title, site_url) VALUES (?, ?, ?, ?)",
-			user.ID, feedURL, o.Title, o.HTMLURL,
+			user.ID, feedURL, fw.outline.Title, fw.outline.HTMLURL,
 		)
 		if err != nil {
 			slog.Error("inserting imported feed", "url", feedURL, "error", err)
@@ -174,13 +232,43 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		rows, err := result.RowsAffected()
+		rowsAffected, err := result.RowsAffected()
 		if err != nil {
 			slog.Error("checking rows affected", "error", err)
 			skipped++
 			continue
 		}
-		if rows == 0 {
+
+		isNew := rowsAffected > 0
+
+		// Determine list_id for this feed (may be nil if no folder).
+		var listID *int64
+		if fw.folderName != "" {
+			id, err := resolveListID(fw.folderName)
+			if err != nil {
+				slog.Error(
+					"resolving list for imported feed",
+					"folder", fw.folderName,
+					"error", err,
+				)
+			} else {
+				listID = &id
+			}
+		}
+
+		// Update list_id for both new and existing feeds.
+		if _, err := s.db.Exec(
+			"UPDATE feeds SET list_id = ? WHERE user_id = ? AND url = ?",
+			listID, user.ID, feedURL,
+		); err != nil {
+			slog.Error(
+				"updating list_id for imported feed",
+				"url", feedURL,
+				"error", err,
+			)
+		}
+
+		if !isNew {
 			duplicates++
 			continue
 		}
@@ -232,18 +320,44 @@ func (s *Server) fetchImportedFeeds(ctx context.Context, feeds []*model.Feed) {
 	}
 }
 
-// collectFeedOutlines recursively walks the outline tree and returns all
-// outlines that have an xmlUrl attribute (i.e. actual feed entries, not
-// category folders).
-func collectFeedOutlines(outlines []opmlOutline) []opmlOutline {
-	var feeds []opmlOutline
+// feedWithFolder pairs a feed outline with its immediate parent folder name.
+type feedWithFolder struct {
+	outline    opmlOutline
+	folderName string // empty if top-level (no folder)
+}
+
+// collectFeedsWithFolder recursively walks the outline tree and returns all
+// feed outlines paired with their immediate parent folder name. A feed belongs
+// to the innermost folder that directly contains it. Whitespace-only folder
+// names are treated as no folder (top-level).
+func collectFeedsWithFolder(
+	outlines []opmlOutline,
+	parentFolder string,
+) []feedWithFolder {
+	var result []feedWithFolder
 	for _, o := range outlines {
 		if strings.TrimSpace(o.XMLURL) != "" {
-			feeds = append(feeds, o)
+			result = append(result, feedWithFolder{
+				outline:    o,
+				folderName: parentFolder,
+			})
 		}
 		if len(o.Outlines) > 0 {
-			feeds = append(feeds, collectFeedOutlines(o.Outlines)...)
+			// If this outline has no xmlUrl it is a folder; use its text as
+			// the folder name for children. If the text is whitespace-only,
+			// fall back to the current parent so those feeds are treated as
+			// ungrouped.
+			folder := parentFolder
+			if strings.TrimSpace(o.XMLURL) == "" {
+				if name := strings.TrimSpace(o.Text); name != "" {
+					folder = name
+				}
+			}
+			result = append(
+				result,
+				collectFeedsWithFolder(o.Outlines, folder)...,
+			)
 		}
 	}
-	return feeds
+	return result
 }
