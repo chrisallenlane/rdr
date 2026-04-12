@@ -768,7 +768,33 @@ article + nav {
 }
 
 /* ==========================================================================
-   13. Utility classes
+   13. Settings
+   ========================================================================== */
+
+.settings h1 { margin-bottom: 1.5rem; }
+
+.setting {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.setting label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.setting select { margin-top: 0.4rem; }
+
+.setting-help {
+    margin: 0.3rem 0 0;
+    font-size: 0.85em;
+    color: var(--muted);
+}
+
+/* ==========================================================================
+   14. Utility classes
    ========================================================================== */
 
 .sr-only {

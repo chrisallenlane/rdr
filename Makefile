@@ -15,7 +15,7 @@ build:
 
 ## Build and run
 run: build
-	$(BUILD_DIR)/$(BINARY)
+	RDR_DATA_PATH=/tmp/rdr-test $(BUILD_DIR)/$(BINARY)
 
 ## Run all tests
 test:

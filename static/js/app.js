@@ -287,9 +287,23 @@
     main.insertBefore(p, main.firstChild);
   });
 
+  // --- Settings: auto-save on change, hide explicit Save button ---
+  function initSettingsForm() {
+    var settingsForm = document.getElementById("settings-form");
+    if (!settingsForm) return;
+
+    var saveBtn = document.getElementById("settings-save");
+    if (saveBtn) saveBtn.style.display = "none";
+
+    settingsForm.addEventListener("change", function () {
+      settingsForm.requestSubmit();
+    });
+  }
+
   initItemsList();
   initPrevNext();
   initSidebar();
   initThemeSelect();
   initShortcutsHelp();
+  initSettingsForm();
 })();

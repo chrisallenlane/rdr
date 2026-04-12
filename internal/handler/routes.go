@@ -43,5 +43,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /lists/{id}/feeds", protected(http.HandlerFunc(s.handleAddFeedToList)))
 	s.mux.Handle("POST /lists/{id}/feeds/{feedID}/delete", protected(http.HandlerFunc(s.handleRemoveFeedFromList)))
 	s.mux.Handle("GET /search", protected(http.HandlerFunc(s.handleSearch)))
+	s.mux.Handle("GET /settings", protected(http.HandlerFunc(s.handleSettingsForm)))
+	s.mux.Handle("POST /settings", protected(http.HandlerFunc(s.handleUpdateSettings)))
 	s.mux.Handle("POST /items/mark-read", protected(http.HandlerFunc(s.handleMarkRead)))
 }

@@ -1,0 +1,26 @@
+{{define "title"}}Settings - rdr{{end}}
+{{define "content"}}
+<div class="settings">
+    <h1>Settings</h1>
+    <form method="post" action="/settings" id="settings-form"
+          hx-post="/settings" hx-swap="none">
+        <div class="setting">
+            <label for="show_descriptions">Article descriptions:</label>
+            <select name="show_descriptions" id="show_descriptions">
+                <option value="1" {{if .Content.ShowDescriptions}}selected{{end}}>Show</option>
+                <option value="0" {{if not .Content.ShowDescriptions}}selected{{end}}>Hide</option>
+            </select>
+            <p class="setting-help">Display summary text beneath article headlines.</p>
+        </div>
+        <div class="setting">
+            <label for="date_display">Date format:</label>
+            <select name="date_display" id="date_display">
+                <option value="0" {{if not .Content.DateDisplayAbsolute}}selected{{end}}>Relative</option>
+                <option value="1" {{if .Content.DateDisplayAbsolute}}selected{{end}}>Absolute</option>
+            </select>
+            <p class="setting-help">"Relative" shows "3h ago". "Absolute" shows "Jan 2, 2006".</p>
+        </div>
+        <button type="submit" id="settings-save">Save</button>
+    </form>
+</div>
+{{end}}
