@@ -27,7 +27,6 @@ fuzz:
 	go test ./internal/sanitize/...  -fuzz=FuzzHTML                -fuzztime=$(FUZZ_TIME)
 	go test ./internal/sanitize/...  -fuzz=FuzzResolveRelativeURLs -fuzztime=$(FUZZ_TIME)
 	go test ./internal/sanitize/...  -fuzz=FuzzHighlightCodeBlocks -fuzztime=$(FUZZ_TIME)
-	go test ./internal/database/...  -fuzz=FuzzParseVersion        -fuzztime=$(FUZZ_TIME)
 	go test ./internal/handler/...   -fuzz=FuzzHandleImportOPML    -fuzztime=$(FUZZ_TIME)
 	go test ./internal/handler/...   -fuzz=FuzzCollectFeedsWithFolder -fuzztime=$(FUZZ_TIME)
 

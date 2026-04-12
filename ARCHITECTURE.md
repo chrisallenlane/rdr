@@ -10,8 +10,7 @@ cmd/rdr/            Entry point (main.go)
 embed.go            go:embed directives for static/ and templates/
 internal/
   config/           Environment-variable configuration (Config struct)
-  database/         SQLite connection, pragma setup, embedded migrations
-    migrations/     SQL migration files (001_initial.sql, 002_starred.sql, ...)
+  database/         SQLite connection, pragma setup, schema initialization
   discover/         Feed URL auto-discovery from website URLs
   favicon/          Favicon downloading, slug computation, file management
   handler/          HTTP handlers, routing, server setup, template rendering
@@ -50,9 +49,9 @@ to keep the design minimal and self-contained.
 implementation) so the binary cross-compiles without a C toolchain. WAL
 mode and foreign keys are enabled via pragmas at connection time.
 
-**Embedded migrations.** Schema changes live in `internal/database/migrations/`
-and are applied automatically on startup. A `schema_migrations` table tracks
-which versions have been applied.
+**Embedded schema.** The canonical schema lives in
+`internal/database/schema.sql` and is applied once on first startup.
+Subsequent opens are no-ops (detected by checking for the `users` table).
 
 ## Request Flow
 
@@ -104,7 +103,6 @@ SameSite=Lax. There is no "remember me" -- sessions last 30 days.
 - Unit tests for pure functions (sanitize, config, helpers, poller logic)
 - Integration tests for HTTP handlers (via `httptest` and an in-memory
   SQLite database)
-- Fuzz tests for HTML sanitization, database migration parsing, OPML
-  import, feed discovery, favicon handling, and time parsing (10 fuzz
-  targets; `make fuzz` runs 6 of them)
+- Fuzz tests for HTML sanitization, OPML import, feed discovery, favicon
+  handling, and time parsing
 - Run `make test` for the full suite, `make fuzz` for fuzz testing

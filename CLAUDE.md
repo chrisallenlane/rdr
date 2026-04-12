@@ -64,8 +64,8 @@ form requires a minimum of 8 characters for the password.
 
 ## Database
 
-- Schema is in `internal/database/migrations/001_initial.sql`.
-- Migrations run automatically on startup.
+- Schema is in `internal/database/schema.sql`.
+- Schema is applied once on first startup (no versioned migrations).
 - FTS5 virtual table `items_fts` is populated via triggers on `items`.
 - Test databases use `testutil.OpenTestDB(t)` which returns an in-memory
-  SQLite instance with migrations applied.
+  SQLite instance with the schema applied.

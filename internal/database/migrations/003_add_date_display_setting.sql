@@ -1,1 +1,0 @@
-ALTER TABLE user_settings ADD COLUMN date_display INTEGER NOT NULL DEFAULT 0;

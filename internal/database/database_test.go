@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// expectedTables lists every table (including virtual) that the initial
-// migration should create.
+// expectedTables lists every table (including virtual) that schema.sql creates.
 var expectedTables = []string{
 	"users",
 	"sessions",
@@ -17,7 +16,6 @@ var expectedTables = []string{
 	"lists",
 	"items_fts",
 	"user_settings",
-	"schema_migrations",
 }
 
 func TestOpen_CreatesAllTables(t *testing.T) {
@@ -30,7 +28,7 @@ func TestOpen_CreatesAllTables(t *testing.T) {
 	}
 }
 
-func TestOpen_MigrationIdempotency(t *testing.T) {
+func TestOpen_Idempotency(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "idem.db")
 
 	// Open the database twice; the second call must succeed without errors.
@@ -45,17 +43,6 @@ func TestOpen_MigrationIdempotency(t *testing.T) {
 		t.Fatalf("second Open: %v", err)
 	}
 	defer func() { _ = db2.Close() }()
-
-	// Verify schema_migrations has exactly one row per migration file.
-	// Update this constant each time a new migration file is added.
-	const wantMigrations = 3
-	var count int
-	if err := db2.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
-		t.Fatalf("querying schema_migrations: %v", err)
-	}
-	if count != wantMigrations {
-		t.Errorf("expected %d migration records, got %d", wantMigrations, count)
-	}
 }
 
 func TestOpen_WALEnabled(t *testing.T) {
@@ -118,45 +105,6 @@ func TestOpen_UnwritablePath(t *testing.T) {
 	}
 }
 
-func TestMigrationApplied_UnknownVersion(t *testing.T) {
-	db := openTestDB(t)
-
-	// Version 9999 has never been applied; migrationApplied must return false.
-	applied, err := migrationApplied(db, 9999)
-	if err != nil {
-		t.Fatalf("migrationApplied: %v", err)
-	}
-	if applied {
-		t.Error("expected migrationApplied to return false for unknown version 9999, got true")
-	}
-}
-
-func TestParseVersion(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		want    int
-		wantErr bool
-	}{
-		{"valid", "001_initial.sql", 1, false},
-		{"multi_digit", "123_foo.sql", 123, false},
-		{"no_underscore", "nounderscore", 0, true},
-		{"empty", "", 0, true},
-		{"non_numeric_prefix", "abc_foo.sql", 0, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseVersion(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parseVersion(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
-			}
-			if got != tt.want {
-				t.Errorf("parseVersion(%q) = %d, want %d", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestOpen_MaxOpenConns(t *testing.T) {
 	db := openTestDB(t)
 
@@ -166,19 +114,6 @@ func TestOpen_MaxOpenConns(t *testing.T) {
 	if stats.MaxOpenConnections != 1 {
 		t.Errorf("expected MaxOpenConnections=1, got %d", stats.MaxOpenConnections)
 	}
-}
-
-func FuzzParseVersion(f *testing.F) {
-	f.Add("001_initial.sql")
-	f.Add("002_add_users.sql")
-	f.Add("")
-	f.Add("notanumber_foo.sql")
-	f.Add("___")
-	f.Add("999999999999999999999_overflow.sql")
-	f.Fuzz(func(t *testing.T, name string) {
-		// Must not panic
-		_, _ = parseVersion(name)
-	})
 }
 
 // tableExists checks sqlite_master for a table or virtual table.
