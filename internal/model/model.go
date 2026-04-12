@@ -28,6 +28,7 @@ type User struct {
 type Feed struct {
 	ID                  int64
 	UserID              int64
+	ListID              *int64
 	URL                 string
 	Title               string
 	SiteURL             string

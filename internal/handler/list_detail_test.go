@@ -121,15 +121,15 @@ func TestHandleAddFeedToList(t *testing.T) {
 			t.Errorf("Location = %q, want %q", loc, want)
 		}
 
-		var count int
+		var gotListID int64
 		if err := s.db.QueryRow(
-			"SELECT COUNT(*) FROM list_feeds WHERE list_id = ? AND feed_id = ?",
-			listID, feedID,
-		).Scan(&count); err != nil {
-			t.Fatalf("querying list_feeds: %v", err)
+			"SELECT list_id FROM feeds WHERE id = ?",
+			feedID,
+		).Scan(&gotListID); err != nil {
+			t.Fatalf("querying feed list_id: %v", err)
 		}
-		if count != 1 {
-			t.Errorf("list_feeds row count = %d, want 1", count)
+		if gotListID != listID {
+			t.Errorf("feed list_id = %d, want %d", gotListID, listID)
 		}
 	})
 
@@ -187,12 +187,12 @@ func TestHandleAddFeedToList(t *testing.T) {
 		listID := insertTestList(t, s, userID, "My List")
 		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
 
-		// Pre-insert the association.
+		// Pre-assign the feed to the list.
 		if _, err := s.db.Exec(
-			"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)",
+			"UPDATE feeds SET list_id = ? WHERE id = ?",
 			listID, feedID,
 		); err != nil {
-			t.Fatalf("pre-inserting list_feed: %v", err)
+			t.Fatalf("pre-setting list_id: %v", err)
 		}
 
 		form := url.Values{"feed_id": {fmt.Sprintf("%d", feedID)}}
@@ -275,10 +275,10 @@ func TestHandleRemoveFeedFromList(t *testing.T) {
 		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
 
 		if _, err := s.db.Exec(
-			"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)",
+			"UPDATE feeds SET list_id = ? WHERE id = ?",
 			listID, feedID,
 		); err != nil {
-			t.Fatalf("inserting list_feed: %v", err)
+			t.Fatalf("setting list_id: %v", err)
 		}
 
 		req := authedRequest(
@@ -297,15 +297,15 @@ func TestHandleRemoveFeedFromList(t *testing.T) {
 			t.Errorf("Location = %q, want %q", loc, want)
 		}
 
-		var count int
+		var gotListID *int64
 		if err := s.db.QueryRow(
-			"SELECT COUNT(*) FROM list_feeds WHERE list_id = ? AND feed_id = ?",
-			listID, feedID,
-		).Scan(&count); err != nil {
-			t.Fatalf("querying list_feeds: %v", err)
+			"SELECT list_id FROM feeds WHERE id = ?",
+			feedID,
+		).Scan(&gotListID); err != nil {
+			t.Fatalf("querying feed list_id: %v", err)
 		}
-		if count != 0 {
-			t.Errorf("list_feeds row count = %d, want 0", count)
+		if gotListID != nil {
+			t.Errorf("feed list_id = %v, want nil", gotListID)
 		}
 	})
 
@@ -315,7 +315,7 @@ func TestHandleRemoveFeedFromList(t *testing.T) {
 		listID := insertTestList(t, s, userID, "My List")
 		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
 
-		s.db.Exec("INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)", listID, feedID)
+		s.db.Exec("UPDATE feeds SET list_id = ? WHERE id = ?", listID, feedID)
 
 		req := authedRequest(
 			t, s, userID,
@@ -342,10 +342,10 @@ func TestHandleRemoveFeedFromList(t *testing.T) {
 		feedID := insertTestFeed(t, s, ownerID, "https://example.com/feed.xml")
 
 		if _, err := s.db.Exec(
-			"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)",
+			"UPDATE feeds SET list_id = ? WHERE id = ?",
 			listID, feedID,
 		); err != nil {
-			t.Fatalf("inserting list_feed: %v", err)
+			t.Fatalf("setting list_id: %v", err)
 		}
 
 		req := authedRequest(

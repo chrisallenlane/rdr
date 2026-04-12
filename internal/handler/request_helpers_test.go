@@ -270,36 +270,6 @@ func TestIsUniqueViolation(t *testing.T) {
 		t.Errorf("isUniqueViolation(UNIQUE error) = false, want true")
 	}
 
-	// Trigger a PRIMARY KEY violation via the list_feeds composite primary key.
-	listRes, err := s.db.Exec(
-		"INSERT INTO lists (user_id, name) VALUES (?, ?)", userID, "test list",
-	)
-	if err != nil {
-		t.Fatalf("inserting list: %v", err)
-	}
-	listID, _ := listRes.LastInsertId()
-
-	feedRes, err := s.db.Exec(
-		"INSERT INTO feeds (user_id, url) VALUES (?, ?)",
-		userID, "https://other.example.com/feed.xml",
-	)
-	if err != nil {
-		t.Fatalf("inserting feed: %v", err)
-	}
-	feedID, _ := feedRes.LastInsertId()
-
-	if _, err = s.db.Exec(
-		"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)", listID, feedID,
-	); err != nil {
-		t.Fatalf("inserting list_feed: %v", err)
-	}
-	_, pkErr := s.db.Exec(
-		"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)", listID, feedID,
-	)
-	if !isUniqueViolation(pkErr) {
-		t.Errorf("isUniqueViolation(PRIMARYKEY error) = false, want true")
-	}
-
 	if isUniqueViolation(errors.New("something else went wrong")) {
 		t.Errorf("isUniqueViolation(unrelated error) = true, want false")
 	}

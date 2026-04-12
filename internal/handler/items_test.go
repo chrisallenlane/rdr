@@ -138,9 +138,9 @@ func insertFilterTestData(t *testing.T, s *Server, userID int64) (feed1ID, feed2
 	}
 	listID, _ = res.LastInsertId()
 	if _, err := s.db.Exec(
-		"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)", listID, feed1ID,
+		"UPDATE feeds SET list_id = ? WHERE id = ?", listID, feed1ID,
 	); err != nil {
-		t.Fatalf("inserting list_feed: %v", err)
+		t.Fatalf("setting feed list_id: %v", err)
 	}
 
 	type itemRow struct {
@@ -381,10 +381,10 @@ func TestHandleMarkRead(t *testing.T) {
 		listID, _ := result.LastInsertId()
 
 		if _, err := s.db.Exec(
-			"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)",
+			"UPDATE feeds SET list_id = ? WHERE id = ?",
 			listID, 1,
 		); err != nil {
-			t.Fatalf("inserting list_feed: %v", err)
+			t.Fatalf("setting feed list_id: %v", err)
 		}
 
 		form := url.Values{"list": {fmt.Sprintf("%d", listID)}}
@@ -648,10 +648,10 @@ func TestHandleMarkRead_ByList(t *testing.T) {
 		t.Fatalf("inserting list: %v", err)
 	}
 	if _, err := s.db.Exec(
-		"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)",
+		"UPDATE feeds SET list_id = ? WHERE id = ?",
 		1, 1,
 	); err != nil {
-		t.Fatalf("inserting list_feed: %v", err)
+		t.Fatalf("setting feed list_id: %v", err)
 	}
 
 	form := url.Values{"list": {"1"}}

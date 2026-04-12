@@ -33,7 +33,7 @@ func (s *Server) renderListsTableFragment(w http.ResponseWriter, r *http.Request
 func (s *Server) queryUserListsWithCounts(userID int64) ([]model.List, error) {
 	rows, err := s.db.Query(
 		`SELECT l.id, l.name, l.created_at,
-		        (SELECT COUNT(*) FROM list_feeds WHERE list_id = l.id) AS feed_count
+		        (SELECT COUNT(*) FROM feeds WHERE list_id = l.id) AS feed_count
 		 FROM lists l WHERE l.user_id = ?
 		 ORDER BY l.name ASC`,
 		userID,

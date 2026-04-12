@@ -15,7 +15,6 @@ var expectedTables = []string{
 	"feeds",
 	"items",
 	"lists",
-	"list_feeds",
 	"items_fts",
 	"user_settings",
 	"schema_migrations",

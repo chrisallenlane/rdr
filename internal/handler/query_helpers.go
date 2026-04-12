@@ -10,21 +10,22 @@ import (
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
 	sqlite "modernc.org/sqlite"
-	sqlitelib "modernc.org/sqlite/lib"
 )
 
 // isUniqueViolation reports whether err is a SQLite uniqueness constraint
-// violation. It matches both SQLITE_CONSTRAINT_UNIQUE (triggered by an explicit
-// UNIQUE constraint) and SQLITE_CONSTRAINT_PRIMARYKEY (triggered by a duplicate
-// composite primary key, e.g. the list_feeds join table).
+// violation. It matches SQLITE_CONSTRAINT_UNIQUE (triggered by an explicit
+// UNIQUE constraint).
 func isUniqueViolation(err error) bool {
 	var sqliteErr *sqlite.Error
 	if !errors.As(err, &sqliteErr) {
 		return false
 	}
 	c := sqliteErr.Code()
-	return c == sqlitelib.SQLITE_CONSTRAINT_UNIQUE ||
-		c == sqlitelib.SQLITE_CONSTRAINT_PRIMARYKEY
+
+	// Import the numeric constant directly to avoid importing sqlitelib.
+	// SQLITE_CONSTRAINT_UNIQUE = 2067.
+	const sqliteConstraintUnique = 2067
+	return c == sqliteConstraintUnique
 }
 
 // sqlBool is an int that converts to bool when scanned. SQLite stores booleans
@@ -98,8 +99,8 @@ func queryUserLists(db *sql.DB, userID int64) ([]model.List, error) {
 	rows, err := db.Query(
 		`SELECT l.id, l.name,
 		        (SELECT COUNT(*) FROM items i
-		         JOIN list_feeds lf ON lf.feed_id = i.feed_id
-		         WHERE lf.list_id = l.id AND i.read = 0) AS unread_count
+		         JOIN feeds f ON i.feed_id = f.id
+		         WHERE f.list_id = l.id AND i.read = 0) AS unread_count
 		 FROM lists l
 		 WHERE l.user_id = ?
 		 ORDER BY l.name ASC`,

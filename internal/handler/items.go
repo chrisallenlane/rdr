@@ -257,8 +257,7 @@ func buildItemFilter(
 		where += " AND i.starred = 1"
 	}
 	if filterList > 0 {
-		where += " AND f.id IN (SELECT feed_id FROM list_feeds WHERE list_id = ?)"
-		where += " AND ? IN (SELECT id FROM lists WHERE user_id = ?)"
+		where += " AND f.list_id = ? AND ? IN (SELECT id FROM lists WHERE user_id = ?)"
 		args = append(args, filterList, filterList, userID)
 	}
 	return where, args

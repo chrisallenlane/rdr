@@ -16,10 +16,21 @@ CREATE TABLE sessions (
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 
+-- lists
+CREATE TABLE lists (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name       TEXT    NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name)
+);
+CREATE INDEX idx_lists_user_id ON lists(user_id);
+
 -- feeds
 CREATE TABLE feeds (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    list_id         INTEGER REFERENCES lists(id) ON DELETE SET NULL,
     url             TEXT    NOT NULL,
     title           TEXT    NOT NULL DEFAULT '',
     site_url        TEXT    NOT NULL DEFAULT '',
@@ -50,23 +61,6 @@ CREATE TABLE items (
 CREATE INDEX idx_items_feed_id ON items(feed_id);
 CREATE INDEX idx_items_published_at ON items(published_at);
 CREATE INDEX idx_items_read ON items(read);
-
--- lists
-CREATE TABLE lists (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name       TEXT    NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, name)
-);
-CREATE INDEX idx_lists_user_id ON lists(user_id);
-
--- list_feeds (join table)
-CREATE TABLE list_feeds (
-    list_id INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
-    feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
-    PRIMARY KEY (list_id, feed_id)
-);
 
 -- full-text search (FTS5)
 CREATE VIRTUAL TABLE items_fts USING fts5(

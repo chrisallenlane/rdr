@@ -24,8 +24,7 @@ type listDetailData struct {
 func (s *Server) queryListFeeds(listID, userID int64) (inList, notInList []model.Feed, err error) {
 	inRows, err := s.db.Query(
 		`SELECT f.id, f.title, f.url FROM feeds f
-		 JOIN list_feeds lf ON f.id = lf.feed_id
-		 WHERE lf.list_id = ? AND f.user_id = ?
+		 WHERE f.list_id = ? AND f.user_id = ?
 		 ORDER BY f.title ASC`,
 		listID, userID,
 	)
@@ -41,11 +40,9 @@ func (s *Server) queryListFeeds(listID, userID int64) (inList, notInList []model
 
 	outRows, err := s.db.Query(
 		`SELECT f.id, f.title, f.url FROM feeds f
-		 WHERE f.user_id = ? AND f.id NOT IN (
-		     SELECT feed_id FROM list_feeds WHERE list_id = ?
-		 )
+		 WHERE f.list_id IS NULL AND f.user_id = ?
 		 ORDER BY f.title ASC`,
-		userID, listID,
+		userID,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("querying feeds not in list: %w", err)
@@ -129,10 +126,10 @@ func (s *Server) handleAddFeedToList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = s.db.Exec(
-		"INSERT INTO list_feeds (list_id, feed_id) VALUES (?, ?)",
-		listID, feedID,
+		"UPDATE feeds SET list_id = ? WHERE id = ? AND user_id = ?",
+		listID, feedID, user.ID,
 	)
-	if err != nil && !isUniqueViolation(err) {
+	if err != nil {
 		slog.Error("adding feed to list", "error", err)
 		s.renderInternalError(w, r)
 		return
@@ -233,8 +230,8 @@ func (s *Server) handleRemoveFeedFromList(w http.ResponseWriter, r *http.Request
 	}
 
 	_, err := s.db.Exec(
-		"DELETE FROM list_feeds WHERE list_id = ? AND feed_id = ?",
-		listID, feedID,
+		"UPDATE feeds SET list_id = NULL WHERE id = ? AND user_id = ?",
+		feedID, user.ID,
 	)
 	if err != nil {
 		slog.Error("removing feed from list", "error", err)
