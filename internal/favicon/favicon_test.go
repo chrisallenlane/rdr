@@ -638,7 +638,7 @@ func FuzzSlug(f *testing.F) {
 			return
 		}
 		for _, r := range result {
-			if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-') {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
 				t.Errorf(
 					"Slug(%q, %q) = %q contains invalid character %q",
 					siteURL, feedURL, result, string(r),

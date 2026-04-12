@@ -26,5 +26,5 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
 	syncing := s.syncStatus != nil && s.syncStatus()
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"syncing":%t}`, syncing)
+	_, _ = fmt.Fprintf(w, `{"syncing":%t}`, syncing)
 }

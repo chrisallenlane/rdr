@@ -165,7 +165,7 @@ func TestLoad_DefaultDataPathAppendsRdr(t *testing.T) {
 	}
 
 	wantDataPath := filepath.Join(configDir, "rdr")
-	t.Cleanup(func() { os.RemoveAll(wantDataPath) })
+	t.Cleanup(func() { _ = os.RemoveAll(wantDataPath) })
 
 	cfg, err := Load()
 	if err != nil {

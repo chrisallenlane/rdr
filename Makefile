@@ -29,12 +29,12 @@ fuzz:
 	go test ./internal/sanitize/...  -fuzz=FuzzHighlightCodeBlocks -fuzztime=$(FUZZ_TIME)
 	go test ./internal/database/...  -fuzz=FuzzParseVersion        -fuzztime=$(FUZZ_TIME)
 	go test ./internal/handler/...   -fuzz=FuzzHandleImportOPML    -fuzztime=$(FUZZ_TIME)
-	go test ./internal/handler/...   -fuzz=FuzzCollectFeedOutlines -fuzztime=$(FUZZ_TIME)
+	go test ./internal/handler/...   -fuzz=FuzzCollectFeedsWithFolder -fuzztime=$(FUZZ_TIME)
 
 ## Run linters (golangci-lint must be installed separately)
 lint:
 	golangci-lint run ./...
-	npx eslint static/js/
+	npx eslint --ignore-pattern 'static/js/htmx.min.js' static/js/
 
 ## Format code
 fmt:

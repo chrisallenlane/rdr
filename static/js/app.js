@@ -1,3 +1,4 @@
+/* global setInterval, fetch, clearInterval */
 // app.js — progressive-enhancement keyboard navigation for rdr.
 // Everything works without this file; it only improves the experience.
 (function () {

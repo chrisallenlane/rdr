@@ -128,7 +128,7 @@ func TestHandleToggleStar(t *testing.T) {
 		userID := createTestUser(t, s, "testuser", "testpass1")
 		itemID := insertFeedAndItem(t, s, userID)
 
-		s.db.Exec("UPDATE items SET starred = 1 WHERE id = ?", itemID)
+		_, _ = s.db.Exec("UPDATE items SET starred = 1 WHERE id = ?", itemID)
 
 		req := authedRequest(
 			t, s, userID,

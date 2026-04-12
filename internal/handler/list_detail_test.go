@@ -315,7 +315,7 @@ func TestHandleRemoveFeedFromList(t *testing.T) {
 		listID := insertTestList(t, s, userID, "My List")
 		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
 
-		s.db.Exec("UPDATE feeds SET list_id = ? WHERE id = ?", listID, feedID)
+		_, _ = s.db.Exec("UPDATE feeds SET list_id = ? WHERE id = ?", listID, feedID)
 
 		req := authedRequest(
 			t, s, userID,
