@@ -17,6 +17,7 @@ var expectedTables = []string{
 	"lists",
 	"list_feeds",
 	"items_fts",
+	"user_settings",
 	"schema_migrations",
 }
 
@@ -48,7 +49,7 @@ func TestOpen_MigrationIdempotency(t *testing.T) {
 
 	// Verify schema_migrations has exactly one row per migration file.
 	// Update this constant each time a new migration file is added.
-	const wantMigrations = 1
+	const wantMigrations = 2
 	var count int
 	if err := db2.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("querying schema_migrations: %v", err)

@@ -58,8 +58,8 @@ func (s *Server) handleItemDetail(w http.ResponseWriter, r *http.Request) {
 	var publishedAt, readAt, createdAt sql.NullString
 	var read, starred sqlBool
 	err := s.db.QueryRow(
-		`SELECT i.id, i.feed_id, i.guid, i.title, i.content, i.url,
-		        i.published_at, i.read, i.read_at, i.created_at,
+		`SELECT i.id, i.feed_id, i.guid, i.title, i.content, i.description,
+		        i.url, i.published_at, i.read, i.read_at, i.created_at,
 		        i.starred,
 		        f.title AS feed_title, f.site_url AS feed_site_url,
 		        f.url AS feed_url
@@ -69,7 +69,7 @@ func (s *Server) handleItemDetail(w http.ResponseWriter, r *http.Request) {
 		itemID, user.ID,
 	).Scan(
 		&item.ID, &item.FeedID, &item.GUID, &item.Title, &item.Content,
-		&item.URL, &publishedAt, &read, &readAt, &createdAt,
+		&item.Description, &item.URL, &publishedAt, &read, &readAt, &createdAt,
 		&starred,
 		&item.FeedTitle, &item.FeedSiteURL, &item.FeedURL,
 	)

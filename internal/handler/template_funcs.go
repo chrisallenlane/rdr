@@ -8,6 +8,7 @@ import (
 
 	"github.com/chrisallenlane/rdr/internal/favicon"
 	"github.com/chrisallenlane/rdr/internal/model"
+	"github.com/chrisallenlane/rdr/internal/sanitize"
 )
 
 // templateFuncMap returns the shared FuncMap used by all templates.
@@ -36,6 +37,9 @@ func templateFuncMap(faviconsDir string) template.FuncMap {
 				return false
 			}
 			return favicon.FileExists(faviconsDir, slug)
+		},
+		"summarize": func(s string) string {
+			return sanitize.Summarize(s, 300)
 		},
 		"itemFeedName": func(item model.Item) string {
 			if item.FeedTitle != "" {

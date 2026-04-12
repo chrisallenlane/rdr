@@ -69,9 +69,9 @@ func FetchAndStoreFeed(ctx context.Context, db *sql.DB, feed *model.Feed, favico
 		}
 
 		if _, err := db.Exec(
-			`INSERT OR IGNORE INTO items (feed_id, guid, title, content, url, published_at)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			feed.ID, itemGUID(item), item.Title, content, item.Link, itemPublishedAt(item),
+			`INSERT OR IGNORE INTO items (feed_id, guid, title, content, description, url, published_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			feed.ID, itemGUID(item), item.Title, content, item.Description, item.Link, itemPublishedAt(item),
 		); err != nil {
 			return fmt.Errorf("storing item for %s: %w", feed.URL, err)
 		}

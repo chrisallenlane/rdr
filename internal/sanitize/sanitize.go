@@ -143,6 +143,34 @@ func HighlightCodeBlocks(html string) string {
 	})
 }
 
+// whitespaceRe collapses runs of whitespace (including newlines) to a single space.
+var whitespaceRe = regexp.MustCompile(`\s+`)
+
+// blockCloseRe matches closing block-level HTML tags.
+var blockCloseRe = regexp.MustCompile(`(?i)</(p|div|h[1-6]|li|blockquote|tr|dt|dd|figcaption|section|article|header|footer|pre)>`)
+
+// Summarize strips HTML tags, collapses whitespace, and truncates to maxLen
+// characters at a word boundary, appending "..." if truncated.
+func Summarize(raw string, maxLen int) string {
+	// Insert spaces at block boundaries before stripping tags so that
+	// adjacent text nodes don't get concatenated (e.g. "</p><p>" -> " ").
+	text := blockCloseRe.ReplaceAllString(raw, " ")
+	text = strictPolicy.Sanitize(text)
+	text = htmlpkg.UnescapeString(text)
+	text = whitespaceRe.ReplaceAllString(strings.TrimSpace(text), " ")
+
+	if len(text) <= maxLen {
+		return text
+	}
+
+	// Truncate at the last space before maxLen.
+	truncated := text[:maxLen]
+	if i := strings.LastIndex(truncated, " "); i > 0 {
+		truncated = truncated[:i]
+	}
+	return truncated + "..."
+}
+
 // Snippet strips HTML from an FTS5 snippet, then replaces the plain-text
 // highlight sentinels with <mark> tags for safe rendering.
 func Snippet(s string) template.HTML {

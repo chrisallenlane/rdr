@@ -12,18 +12,19 @@ import (
 
 // itemsPageData carries data for the items page template.
 type itemsPageData struct {
-	Items         []model.Item
-	TotalItems    int
-	UnreadCount   int
-	Page          int
-	TotalPages    int
-	Heading       string
-	FilterFeed    int64
-	FilterList    int64
-	FilterUnread  bool
-	FilterStarred bool
-	Feeds         []model.Feed // for sidebar filter links
-	Lists         []model.List // for sidebar filter links
+	Items            []model.Item
+	TotalItems       int
+	UnreadCount      int
+	Page             int
+	TotalPages       int
+	Heading          string
+	FilterFeed       int64
+	FilterList       int64
+	FilterUnread     bool
+	FilterStarred    bool
+	ShowDescriptions bool
+	Feeds            []model.Feed // for sidebar filter links
+	Lists            []model.List // for sidebar filter links
 }
 
 // queryItemsPageData builds the full itemsPageData for the given filters.
@@ -43,8 +44,10 @@ func (s *Server) queryItemsPageData(
 	var totalPages, offset int
 	page, totalPages, offset = paginate(totalItems, itemsPerPage, page)
 
-	itemQuery := `SELECT i.id, i.feed_id, i.title, i.url, i.published_at, i.read,
-	                     i.starred,
+	itemQuery := `SELECT i.id, i.feed_id, i.title,
+	                     COALESCE(NULLIF(i.description, ''), i.content) AS description,
+	                     i.url,
+	                     i.published_at, i.read, i.starred,
 	                     f.title AS feed_title, f.site_url AS feed_site_url,
 	                     f.url AS feed_url
 	              FROM items i
@@ -66,8 +69,8 @@ func (s *Server) queryItemsPageData(
 		var publishedAt sql.NullString
 		var read, starred sqlBool
 		if err := rows.Scan(
-			&item.ID, &item.FeedID, &item.Title, &item.URL, &publishedAt,
-			&read, &starred,
+			&item.ID, &item.FeedID, &item.Title, &item.Description, &item.URL,
+			&publishedAt, &read, &starred,
 			&item.FeedTitle, &item.FeedSiteURL, &item.FeedURL,
 		); err != nil {
 			return itemsPageData{}, fmt.Errorf("scanning item: %w", err)
@@ -135,6 +138,8 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	data.ShowDescriptions = queryUserSettings(s.db, user.ID).ShowDescriptions
+
 	s.render(w, r, "items.html", PageData{Content: data})
 }
 
@@ -187,6 +192,7 @@ func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 			s.renderInternalError(w, r)
 			return
 		}
+		data.ShowDescriptions = queryUserSettings(s.db, user.ID).ShowDescriptions
 		flash(w, r, fmt.Sprintf("Marked %d items as read.", affected))
 		s.renderFragment(w, "items_section.html", data)
 		return

@@ -121,6 +121,20 @@ func queryUserLists(db *sql.DB, userID int64) ([]model.List, error) {
 	return lists, rows.Err()
 }
 
+// queryUserSettings returns the settings for the given user. If no row exists
+// in user_settings the returned struct contains defaults (ShowDescriptions: true).
+func queryUserSettings(db *sql.DB, userID int64) model.UserSettings {
+	settings := model.UserSettings{UserID: userID, ShowDescriptions: true}
+	var show sqlBool
+	if err := db.QueryRow(
+		"SELECT show_descriptions FROM user_settings WHERE user_id = ?",
+		userID,
+	).Scan(&show); err == nil {
+		settings.ShowDescriptions = bool(show)
+	}
+	return settings
+}
+
 // verifyOwnership checks that a row in table with the given id is owned by
 // userID by querying SELECT COUNT(*) FROM <table> WHERE id = ? AND user_id = ?.
 // It returns true if the row is found. On error it renders a 500 response; if

@@ -12,12 +12,16 @@
     {{if .Items}}
     {{range .Items}}
     <article>
-        <p>
-            {{if not .Read}}<strong>{{end}}
-            <a href="/items/{{.ID}}">{{if hasFavicon (faviconSlug .)}}<img src="/favicons/{{faviconSlug .}}" alt="" class="feed-icon" width="16" height="16">{{end}}{{if .Title}}{{.Title}}{{else}}(untitled){{end}}</a>
-            {{if not .Read}}</strong><span class="sr-only">(unread)</span>{{end}}
-        </p>
-        <small class="item-meta">{{itemFeedName .}}{{if .PublishedAt}} · {{timeAgo .PublishedAt}}{{end}}</small>
+        {{if hasFavicon (faviconSlug .)}}<img src="/favicons/{{faviconSlug .}}" alt="" class="feed-icon" width="16" height="16">{{end}}
+        <div class="item-content">
+            <p class="item-title" title="{{.Title}}">
+                {{if not .Read}}<strong>{{end}}
+                <a href="/items/{{.ID}}">{{if .Title}}{{.Title}}{{else}}(untitled){{end}}</a>
+                {{if not .Read}}</strong><span class="sr-only">(unread)</span>{{end}}
+            </p>
+            <small class="item-meta">{{itemFeedName .}}{{if .PublishedAt}} · {{timeAgo .PublishedAt}}{{end}}</small>
+            {{if $.ShowDescriptions}}{{if .Description}}<div class="item-description">{{summarize .Description}}</div>{{end}}{{end}}
+        </div>
     </article>
     {{end}}
 

@@ -57,6 +57,7 @@ type Item struct {
 	GUID        string
 	Title       string
 	Content     string
+	Description string
 	URL         string
 	PublishedAt *time.Time
 	Read        bool
@@ -66,4 +67,10 @@ type Item struct {
 	FeedTitle   string // joined from feeds table, for display
 	FeedSiteURL string // joined from feeds table, for display
 	FeedURL     string // joined from feeds table, for favicon slug
+}
+
+// UserSettings holds per-user configuration.
+type UserSettings struct {
+	UserID           int64
+	ShowDescriptions bool
 }
