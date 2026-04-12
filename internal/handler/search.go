@@ -21,12 +21,13 @@ type searchResult struct {
 
 // searchPageData carries data for the search page template.
 type searchPageData struct {
-	Query        string
-	Results      []searchResult
-	TotalResults int
-	Page         int
-	TotalPages   int
-	Error        string
+	Query               string
+	Results             []searchResult
+	TotalResults        int
+	Page                int
+	TotalPages          int
+	Error               string
+	DateDisplayAbsolute bool
 }
 
 const searchErrMsg = `Invalid search query. Avoid special characters like ", *, (, ).`
@@ -126,12 +127,15 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	settings := queryUserSettings(s.db, user.ID)
+
 	data := searchPageData{
-		Query:        q,
-		Results:      results,
-		TotalResults: totalResults,
-		Page:         page,
-		TotalPages:   totalPages,
+		Query:               q,
+		Results:             results,
+		TotalResults:        totalResults,
+		Page:                page,
+		TotalPages:          totalPages,
+		DateDisplayAbsolute: settings.DateDisplayAbsolute,
 	}
 
 	if htmx {

@@ -14,9 +14,9 @@ import (
 // templateFuncMap returns the shared FuncMap used by all templates.
 func templateFuncMap(faviconsDir string) template.FuncMap {
 	return template.FuncMap{
-		"timeAgo":  timeAgo,
-		"add":      func(a, b int) int { return a + b },
-		"subtract": func(a, b int) int { return a - b },
+		"formatDate": formatDate,
+		"add":        func(a, b int) int { return a + b },
+		"subtract":   func(a, b int) int { return a - b },
 		"deref": func(p *int64) int64 {
 			if p == nil {
 				return 0
@@ -55,9 +55,12 @@ func templateFuncMap(faviconsDir string) template.FuncMap {
 	}
 }
 
-// timeAgo returns a human-friendly relative time string.
-// It accepts time.Time or *time.Time; nil pointers return an empty string.
-func timeAgo(v any) string {
+// formatDate formats a time value for display. It accepts time.Time or
+// *time.Time; nil pointers return an empty string. When absolute is true it
+// returns the date in "Jan 2, 2006" form. When false it returns a
+// human-friendly relative string for times within the past week, falling back
+// to "Jan 2, 2006" for older dates.
+func formatDate(v any, absolute bool) string {
 	var t time.Time
 	switch val := v.(type) {
 	case time.Time:
@@ -69,6 +72,10 @@ func timeAgo(v any) string {
 		t = *val
 	default:
 		return ""
+	}
+
+	if absolute {
+		return t.Format("Jan 2, 2006")
 	}
 
 	d := time.Since(t)

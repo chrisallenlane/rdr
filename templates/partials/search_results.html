@@ -12,7 +12,7 @@
     <article>
         <header>
             <small>{{.FeedTitle}}</small>
-            {{if .PublishedAt}} · <small>{{timeAgo .PublishedAt}}</small>{{end}}
+            {{if .PublishedAt}} · <small>{{formatDate .PublishedAt $.DateDisplayAbsolute}}</small>{{end}}
         </header>
         <p>
             <a href="/items/{{.ID}}">{{if .TitleSnippet}}{{.TitleSnippet}}{{else}}{{.Title}}{{end}}</a>

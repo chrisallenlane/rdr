@@ -15,10 +15,11 @@ import (
 
 // itemDetailData carries data for the item detail page template.
 type itemDetailData struct {
-	Item       model.Item
-	Content    template.HTML // sanitized HTML
-	PrevItemID *int64
-	NextItemID *int64
+	Item                model.Item
+	Content             template.HTML // sanitized HTML
+	PrevItemID          *int64
+	NextItemID          *int64
+	DateDisplayAbsolute bool
 }
 
 // adjacentItemID returns the ID of the item immediately before (prev=true)
@@ -114,12 +115,15 @@ func (s *Server) handleItemDetail(w http.ResponseWriter, r *http.Request) {
 		nextID = s.adjacentItemID(user.ID, pubStr, item.ID, false)
 	}
 
+	settings := queryUserSettings(s.db, user.ID)
+
 	s.render(w, r, "item.html", PageData{
 		Content: itemDetailData{
-			Item:       item,
-			Content:    template.HTML(content),
-			PrevItemID: prevID,
-			NextItemID: nextID,
+			Item:                item,
+			Content:             template.HTML(content),
+			PrevItemID:          prevID,
+			NextItemID:          nextID,
+			DateDisplayAbsolute: settings.DateDisplayAbsolute,
 		},
 	})
 }

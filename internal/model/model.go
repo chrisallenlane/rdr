@@ -71,6 +71,7 @@ type Item struct {
 
 // UserSettings holds per-user configuration.
 type UserSettings struct {
-	UserID           int64
-	ShowDescriptions bool
+	UserID              int64
+	ShowDescriptions    bool
+	DateDisplayAbsolute bool
 }

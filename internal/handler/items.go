@@ -12,19 +12,20 @@ import (
 
 // itemsPageData carries data for the items page template.
 type itemsPageData struct {
-	Items            []model.Item
-	TotalItems       int
-	UnreadCount      int
-	Page             int
-	TotalPages       int
-	Heading          string
-	FilterFeed       int64
-	FilterList       int64
-	FilterUnread     bool
-	FilterStarred    bool
-	ShowDescriptions bool
-	Feeds            []model.Feed // for sidebar filter links
-	Lists            []model.List // for sidebar filter links
+	Items               []model.Item
+	TotalItems          int
+	UnreadCount         int
+	Page                int
+	TotalPages          int
+	Heading             string
+	FilterFeed          int64
+	FilterList          int64
+	FilterUnread        bool
+	FilterStarred       bool
+	ShowDescriptions    bool
+	DateDisplayAbsolute bool
+	Feeds               []model.Feed // for sidebar filter links
+	Lists               []model.List // for sidebar filter links
 }
 
 // queryItemsPageData builds the full itemsPageData for the given filters.
@@ -138,7 +139,9 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data.ShowDescriptions = queryUserSettings(s.db, user.ID).ShowDescriptions
+	settings := queryUserSettings(s.db, user.ID)
+	data.ShowDescriptions = settings.ShowDescriptions
+	data.DateDisplayAbsolute = settings.DateDisplayAbsolute
 
 	s.render(w, r, "items.html", PageData{Content: data})
 }
@@ -192,7 +195,9 @@ func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 			s.renderInternalError(w, r)
 			return
 		}
-		data.ShowDescriptions = queryUserSettings(s.db, user.ID).ShowDescriptions
+		htmxSettings := queryUserSettings(s.db, user.ID)
+		data.ShowDescriptions = htmxSettings.ShowDescriptions
+		data.DateDisplayAbsolute = htmxSettings.DateDisplayAbsolute
 		flash(w, r, fmt.Sprintf("Marked %d items as read.", affected))
 		s.renderFragment(w, "items_section.html", data)
 		return

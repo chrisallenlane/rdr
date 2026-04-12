@@ -122,15 +122,17 @@ func queryUserLists(db *sql.DB, userID int64) ([]model.List, error) {
 }
 
 // queryUserSettings returns the settings for the given user. If no row exists
-// in user_settings the returned struct contains defaults (ShowDescriptions: true).
+// in user_settings the returned struct contains defaults (ShowDescriptions:
+// true, DateDisplayAbsolute: false).
 func queryUserSettings(db *sql.DB, userID int64) model.UserSettings {
 	settings := model.UserSettings{UserID: userID, ShowDescriptions: true}
-	var show sqlBool
+	var show, dateDisplay sqlBool
 	if err := db.QueryRow(
-		"SELECT show_descriptions FROM user_settings WHERE user_id = ?",
+		"SELECT show_descriptions, date_display FROM user_settings WHERE user_id = ?",
 		userID,
-	).Scan(&show); err == nil {
+	).Scan(&show, &dateDisplay); err == nil {
 		settings.ShowDescriptions = bool(show)
+		settings.DateDisplayAbsolute = bool(dateDisplay)
 	}
 	return settings
 }

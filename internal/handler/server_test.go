@@ -290,7 +290,7 @@ func TestHandleIndex(t *testing.T) {
 	}
 }
 
-func TestTimeAgo(t *testing.T) {
+func TestFormatDate_Relative(t *testing.T) {
 	now := time.Now()
 
 	thirtyDaysAgo := now.Add(-30 * 24 * time.Hour)
@@ -362,9 +362,9 @@ func TestTimeAgo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := timeAgo(tt.input)
+			got := formatDate(tt.input, false)
 			if got != tt.want {
-				t.Errorf("timeAgo(%v) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("formatDate(%v, false) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

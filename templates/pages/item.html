@@ -5,7 +5,7 @@
         <h1>{{if .Content.Item.URL}}<a href="{{.Content.Item.URL}}" target="_blank" rel="nofollow noopener">{{.Content.Item.Title}}</a>{{else}}{{.Content.Item.Title}}{{end}}</h1>
         <small class="item-meta">
             {{if .Content.Item.FeedSiteURL}}<a href="{{.Content.Item.FeedSiteURL}}" target="_blank" rel="nofollow noopener">{{itemFeedName .Content.Item}}</a>{{else}}{{itemFeedName .Content.Item}}{{end}}
-            {{if .Content.Item.PublishedAt}} · {{timeAgo .Content.Item.PublishedAt}}{{end}}
+            {{if .Content.Item.PublishedAt}} · {{formatDate .Content.Item.PublishedAt .Content.DateDisplayAbsolute}}{{end}}
             · {{template "star_button" .Content.Item}}
         </small>
     </header>

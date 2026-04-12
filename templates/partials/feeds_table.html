@@ -21,9 +21,9 @@
             <td>
                 {{- if .LastFetchedAt -}}
                     {{- if .LastFetchError -}}
-                        <span class="health-failing" title="{{.LastFetchError}}">✗ {{.LastFetchError}} ({{timeAgo .LastFetchedAt}})</span>
+                        <span class="health-failing" title="{{.LastFetchError}}">✗ {{.LastFetchError}} ({{formatDate .LastFetchedAt false}})</span>
                     {{- else -}}
-                        <span class="health-ok">✓ {{timeAgo .LastFetchedAt}}</span>
+                        <span class="health-ok">✓ {{formatDate .LastFetchedAt false}}</span>
                     {{- end -}}
                 {{- else -}}
                     {{- if .LastFetchError -}}
