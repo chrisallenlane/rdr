@@ -584,6 +584,21 @@ section > article a::after {
 
 .feeds-actions form:first-child { flex: 1; }
 
+button:has(.btn-spinner) { position: relative; }
+
+.btn-spinner { display: none; }
+
+.htmx-request .btn-text { visibility: hidden; }
+.htmx-request .btn-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    inset: 0;
+    animation: spin 1s linear infinite;
+}
+.htmx-request button[type="submit"] { pointer-events: none; }
+
 .health-ok      { color: var(--success); }
 .health-failing { color: var(--error); }
 .health-pending { color: var(--muted); }
