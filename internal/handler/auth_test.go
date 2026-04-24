@@ -259,6 +259,39 @@ func TestHandleLogin(t *testing.T) {
 		}
 	})
 
+	t.Run("session cookie gets Secure flag when X-Forwarded-Proto is https", func(t *testing.T) {
+		s := newTestServer(t)
+		createTestUser(t, s, "testuser", "testpass1")
+
+		form := url.Values{
+			"username": {"testuser"},
+			"password": {"testpass1"},
+		}
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/login",
+			strings.NewReader(form.Encode()),
+		)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Forwarded-Proto", "https")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		var found bool
+		for _, c := range rec.Result().Cookies() {
+			if c.Name == "rdr_session" {
+				found = true
+				if !c.Secure {
+					t.Error("expected Secure flag on session cookie when X-Forwarded-Proto is https")
+				}
+			}
+		}
+		if !found {
+			t.Fatal("rdr_session cookie not set")
+		}
+	})
+
 	t.Run("non-existent username runs bcrypt to avoid timing oracle", func(t *testing.T) {
 		// Guards against regression of the username-enumeration timing
 		// channel fix. Bcrypt at DefaultCost (10) costs ~70-100ms; a pure
@@ -339,7 +372,8 @@ func TestCreateSession(t *testing.T) {
 	userID := createTestUser(t, s, "testuser", "testpass1")
 
 	rec := httptest.NewRecorder()
-	if err := s.createSession(rec, userID); err != nil {
+	req := httptest.NewRequest(http.MethodPost, "/login", nil)
+	if err := s.createSession(rec, req, userID); err != nil {
 		t.Fatalf("createSession: %v", err)
 	}
 
@@ -353,6 +387,12 @@ func TestCreateSession(t *testing.T) {
 			}
 			if !c.HttpOnly {
 				t.Error("expected HttpOnly cookie")
+			}
+			if c.Secure {
+				t.Error("Secure should be false on plain HTTP request")
+			}
+			if c.SameSite != http.SameSiteLaxMode {
+				t.Errorf("SameSite = %v, want Lax", c.SameSite)
 			}
 			break
 		}

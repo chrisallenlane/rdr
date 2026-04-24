@@ -2,6 +2,8 @@ package handler
 
 import (
 	"net/http"
+
+	"github.com/chrisallenlane/rdr/internal/middleware"
 )
 
 // validThemes is the set of allowed theme values.
@@ -48,6 +50,7 @@ func (s *Server) handleThemeChange(w http.ResponseWriter, r *http.Request) {
 		Value:    theme,
 		MaxAge:   31536000,
 		Path:     "/",
+		Secure:   middleware.IsSecureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 

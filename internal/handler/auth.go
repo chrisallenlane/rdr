@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -80,7 +81,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.createSession(w, userID); err != nil {
+	if err := s.createSession(w, r, userID); err != nil {
 		slog.Error("creating session", "error", err)
 		s.renderInternalError(w, r)
 		return
@@ -126,7 +127,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.createSession(w, userID); err != nil {
+	if err := s.createSession(w, r, userID); err != nil {
 		slog.Error("creating session", "error", err)
 		s.renderInternalError(w, r)
 		return
@@ -151,6 +152,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   middleware.IsSecureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 
@@ -162,8 +164,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 const sessionDuration = 30 * 24 * time.Hour
 
 // createSession generates a new session for the given user, stores it in the
-// database, and sets the session cookie on the response.
-func (s *Server) createSession(w http.ResponseWriter, userID int64) error {
+// database, and sets the session cookie on the response. The Secure flag is
+// set when the request arrived over TLS (directly or via a reverse proxy
+// that sets X-Forwarded-Proto).
+func (s *Server) createSession(w http.ResponseWriter, r *http.Request, userID int64) error {
 	sessionID, err := generateRandomHex(32)
 	if err != nil {
 		return err
@@ -183,6 +187,7 @@ func (s *Server) createSession(w http.ResponseWriter, userID int64) error {
 		MaxAge:   int(sessionDuration.Seconds()),
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   middleware.IsSecureRequest(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 

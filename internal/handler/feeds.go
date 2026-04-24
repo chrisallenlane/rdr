@@ -155,12 +155,12 @@ func (s *Server) handleAddFeed(w http.ResponseWriter, r *http.Request) {
 
 	if fetchErr != nil {
 		slog.Warn("initial feed fetch failed", "url", feedURL, "error", fetchErr)
-		setFlash(w, fmt.Sprintf("Feed added but could not be fetched: %v", fetchErr))
+		setFlash(w, r, fmt.Sprintf("Feed added but could not be fetched: %v", fetchErr))
 		http.Redirect(w, r, "/feeds", http.StatusSeeOther)
 		return
 	}
 
-	setFlash(w, "Feed added successfully.")
+	setFlash(w, r, "Feed added successfully.")
 	http.Redirect(w, r, "/feeds", http.StatusSeeOther)
 }
 

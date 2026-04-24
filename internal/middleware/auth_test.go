@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,6 +26,51 @@ func TestUserFromContext_NoUser(t *testing.T) {
 	ctx := context.Background()
 	if got := UserFromContext(ctx); got != nil {
 		t.Errorf("UserFromContext(empty context) = %v, want nil", got)
+	}
+}
+
+func TestIsSecureRequest(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(*http.Request)
+		expected bool
+	}{
+		{
+			name:     "plain HTTP returns false",
+			setup:    func(*http.Request) {},
+			expected: false,
+		},
+		{
+			name: "direct TLS returns true",
+			setup: func(r *http.Request) {
+				r.TLS = &tls.ConnectionState{}
+			},
+			expected: true,
+		},
+		{
+			name: "X-Forwarded-Proto: https returns true",
+			setup: func(r *http.Request) {
+				r.Header.Set("X-Forwarded-Proto", "https")
+			},
+			expected: true,
+		},
+		{
+			name: "X-Forwarded-Proto: http returns false",
+			setup: func(r *http.Request) {
+				r.Header.Set("X-Forwarded-Proto", "http")
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			tt.setup(req)
+			if got := IsSecureRequest(req); got != tt.expected {
+				t.Errorf("IsSecureRequest() = %v, want %v", got, tt.expected)
+			}
+		})
 	}
 }
 

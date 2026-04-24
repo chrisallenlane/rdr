@@ -154,7 +154,7 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 			return
 		}
-		setFlash(w, msg)
+		setFlash(w, r, msg)
 		http.Redirect(w, r, "/feeds", http.StatusSeeOther)
 	}
 
@@ -306,7 +306,7 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setFlash(w, msg)
+	setFlash(w, r, msg)
 	http.Redirect(w, r, "/feeds", http.StatusSeeOther)
 }
 

@@ -47,6 +47,6 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setFlash(w, "Settings saved.")
+	setFlash(w, r, "Settings saved.")
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }

@@ -179,10 +179,13 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, tmpl string, dat
 	if cookie, err := r.Cookie("rdr_flash"); err == nil {
 		data.Flash = cookie.Value
 		http.SetCookie(w, &http.Cookie{
-			Name:   "rdr_flash",
-			Value:  "",
-			MaxAge: -1,
-			Path:   "/",
+			Name:     "rdr_flash",
+			Value:    "",
+			MaxAge:   -1,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   middleware.IsSecureRequest(r),
+			SameSite: http.SameSiteLaxMode,
 		})
 	}
 
@@ -235,13 +238,19 @@ func (s *Server) renderInternalError(w http.ResponseWriter, r *http.Request) {
 	s.renderError(w, r, http.StatusInternalServerError, "Internal Server Error")
 }
 
-// setFlash sets a flash message cookie.
-func setFlash(w http.ResponseWriter, message string) {
+// setFlash sets a flash message cookie. The Secure flag is set when the
+// request arrived over TLS; HttpOnly and SameSite=Lax are always set so
+// the short-lived flash cookie cannot be exfiltrated via scripts or
+// cross-site requests.
+func setFlash(w http.ResponseWriter, r *http.Request, message string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:   "rdr_flash",
-		Value:  message,
-		MaxAge: 10,
-		Path:   "/",
+		Name:     "rdr_flash",
+		Value:    message,
+		MaxAge:   10,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   middleware.IsSecureRequest(r),
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
@@ -277,7 +286,7 @@ func flash(w http.ResponseWriter, r *http.Request, message string) {
 	if isHTMXRequest(r) {
 		setHTMXTriggers(w, htmxTriggers{"showFlash": message})
 	} else {
-		setFlash(w, message)
+		setFlash(w, r, message)
 	}
 }
 

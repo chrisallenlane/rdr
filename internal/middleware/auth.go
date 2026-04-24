@@ -25,6 +25,17 @@ func ContextWithUser(ctx context.Context, user *model.User) context.Context {
 	return context.WithValue(ctx, userContextKey, user)
 }
 
+// IsSecureRequest reports whether the request was served over TLS, either
+// directly (r.TLS != nil) or via a reverse proxy that sets
+// X-Forwarded-Proto: https. Used to decide whether to set the Secure flag
+// on cookies so plain-HTTP development setups remain functional.
+func IsSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return r.Header.Get("X-Forwarded-Proto") == "https"
+}
+
 // RequireAuth returns middleware that validates the rdr_session cookie,
 // loads the associated user, and injects it into the request context.
 // Unauthenticated requests are redirected to /login.
@@ -48,10 +59,13 @@ func RequireAuth(db *sql.DB) func(http.Handler) http.Handler {
 			if err != nil {
 				// Invalid or expired session: clear the cookie.
 				http.SetCookie(w, &http.Cookie{
-					Name:   "rdr_session",
-					Value:  "",
-					Path:   "/",
-					MaxAge: -1,
+					Name:     "rdr_session",
+					Value:    "",
+					Path:     "/",
+					MaxAge:   -1,
+					HttpOnly: true,
+					Secure:   IsSecureRequest(r),
+					SameSite: http.SameSiteLaxMode,
 				})
 				http.Redirect(w, r, "/login", http.StatusSeeOther)
 				return

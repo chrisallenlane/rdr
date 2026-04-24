@@ -117,7 +117,7 @@ func (s *Server) handleCreateList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setFlash(w, "List created.")
+	setFlash(w, r, "List created.")
 	http.Redirect(w, r, "/lists", http.StatusSeeOther)
 }
 

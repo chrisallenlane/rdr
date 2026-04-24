@@ -15,9 +15,9 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if started {
-		setFlash(w, "Feed sync started.")
+		setFlash(w, r, "Feed sync started.")
 	} else {
-		setFlash(w, "A sync is already in progress.")
+		setFlash(w, r, "A sync is already in progress.")
 	}
 	http.Redirect(w, r, refererPath(r, "/feeds"), http.StatusSeeOther)
 }

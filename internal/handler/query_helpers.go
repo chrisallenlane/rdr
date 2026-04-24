@@ -215,6 +215,6 @@ func (s *Server) deleteByID(w http.ResponseWriter, r *http.Request, table, entit
 		return
 	}
 
-	setFlash(w, entity+" removed.")
+	setFlash(w, r, entity+" removed.")
 	http.Redirect(w, r, redirect, http.StatusSeeOther)
 }

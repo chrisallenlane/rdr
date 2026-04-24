@@ -173,7 +173,7 @@ func (s *Server) handleRenameList(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 			return
 		}
-		setFlash(w, "List name is required.")
+		setFlash(w, r, "List name is required.")
 		http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
 		return
 	}
@@ -189,7 +189,7 @@ func (s *Server) handleRenameList(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 				return
 			}
-			setFlash(w, "A list with that name already exists.")
+			setFlash(w, r, "A list with that name already exists.")
 			http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
 			return
 		}
@@ -207,7 +207,7 @@ func (s *Server) handleRenameList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setFlash(w, "List renamed.")
+	setFlash(w, r, "List renamed.")
 	http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
 }
 

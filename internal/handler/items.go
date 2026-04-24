@@ -203,7 +203,7 @@ func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setFlash(w, fmt.Sprintf("Marked %d items as read.", affected))
+	setFlash(w, r, fmt.Sprintf("Marked %d items as read.", affected))
 
 	// Redirect back preserving filters.
 	redirect := "/items"
