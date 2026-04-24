@@ -95,8 +95,12 @@ When an item is viewed, its content passes through three sanitization steps:
 ## Authentication
 
 Session-based with bcrypt password hashing. Sessions are stored in the
-database with an expiration timestamp. The session cookie is HttpOnly and
-SameSite=Lax. There is no "remember me" -- sessions last 30 days.
+database with an expiration timestamp. The session cookie is HttpOnly,
+SameSite=Lax, and Secure when the request arrived over TLS (including
+`X-Forwarded-Proto: https` from a reverse proxy). There is no "remember me"
+-- sessions last 30 days. A bcrypt decoy comparison is performed on failed
+login when the username does not exist, to close the timing side-channel that
+would otherwise allow username enumeration.
 
 ## Testing
 

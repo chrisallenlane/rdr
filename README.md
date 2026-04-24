@@ -20,14 +20,30 @@ progressive enhancement — everything works without it.
 
 - RSS and Atom feed support
 - Full-text search across all items (SQLite FTS5)
-- Feed organization with lists (a feed can belong to multiple lists)
+- Feed organization with lists (a feed belongs to one list)
+- OPML import and export (lists exported as folders)
 - Four themes: Solarized Light/Dark and Modus Light/Dark (WCAG AAA high-contrast)
+- Per-user settings: date display format (relative or absolute), item description previews
 - Background feed polling with configurable interval
 - Automatic data retention (prune old read items)
 - Multi-user support with session-based authentication
 - Single binary deployment or Docker
 - Keyboard shortcuts for item navigation (vim-style j/k/h/l)
 - Mobile-friendly responsive design
+
+## Deployment Model
+
+rdr is designed for homelab and trusted-network deployment. It is not hardened
+for direct public-internet exposure.
+
+Open registration is intentional for this environment — a homelab operator
+typically wants anyone on the local network to be able to create an account
+without an admin approval step. If you expose rdr to the internet, front it
+with a reverse proxy that enforces an authentication layer (e.g., HTTP basic
+auth, OAuth2 proxy, or similar), and restrict registration accordingly.
+
+HSTS is not configured. If your reverse proxy terminates TLS, configure HSTS
+at the proxy layer.
 
 ## Quick Start
 
