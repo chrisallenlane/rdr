@@ -178,15 +178,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, tmpl string, dat
 	// Read and clear flash cookie.
 	if cookie, err := r.Cookie("rdr_flash"); err == nil {
 		data.Flash = cookie.Value
-		http.SetCookie(w, &http.Cookie{
-			Name:     "rdr_flash",
-			Value:    "",
-			MaxAge:   -1,
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   middleware.IsSecureRequest(r),
-			SameSite: http.SameSiteLaxMode,
-		})
+		setCookie(w, r, "rdr_flash", "", -1, true)
 	}
 
 	// Populate user from context (set by auth middleware).
@@ -238,20 +230,10 @@ func (s *Server) renderInternalError(w http.ResponseWriter, r *http.Request) {
 	s.renderError(w, r, http.StatusInternalServerError, "Internal Server Error")
 }
 
-// setFlash sets a flash message cookie. The Secure flag is set when the
-// request arrived over TLS; HttpOnly and SameSite=Lax are always set so
-// the short-lived flash cookie cannot be exfiltrated via scripts or
-// cross-site requests.
+// setFlash writes a short-lived flash message cookie with the application's
+// standard cookie security defaults (see setCookie).
 func setFlash(w http.ResponseWriter, r *http.Request, message string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     "rdr_flash",
-		Value:    message,
-		MaxAge:   10,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   middleware.IsSecureRequest(r),
-		SameSite: http.SameSiteLaxMode,
-	})
+	setCookie(w, r, "rdr_flash", message, 10, true)
 }
 
 // htmxTriggers maps event names to payloads for the HX-Trigger header.

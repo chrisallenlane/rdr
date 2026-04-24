@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -146,15 +145,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "rdr_session",
-		Value:    "",
-		MaxAge:   -1,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   middleware.IsSecureRequest(r),
-		SameSite: http.SameSiteLaxMode,
-	})
+	setCookie(w, r, "rdr_session", "", -1, true)
 
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
@@ -181,15 +172,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request, userID in
 		return err
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "rdr_session",
-		Value:    sessionID,
-		MaxAge:   int(sessionDuration.Seconds()),
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   middleware.IsSecureRequest(r),
-		SameSite: http.SameSiteLaxMode,
-	})
+	setCookie(w, r, "rdr_session", sessionID, int(sessionDuration.Seconds()), true)
 
 	return nil
 }

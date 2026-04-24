@@ -2,8 +2,6 @@ package handler
 
 import (
 	"net/http"
-
-	"github.com/chrisallenlane/rdr/internal/middleware"
 )
 
 // validThemes is the set of allowed theme values.
@@ -45,14 +43,9 @@ func (s *Server) handleThemeChange(w http.ResponseWriter, r *http.Request) {
 		theme = "solarized-light"
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "rdr_theme",
-		Value:    theme,
-		MaxAge:   31536000,
-		Path:     "/",
-		Secure:   middleware.IsSecureRequest(r),
-		SameSite: http.SameSiteLaxMode,
-	})
+	// Theme cookie is readable by client JS (progressive enhancement), so
+	// httpOnly=false.
+	setCookie(w, r, "rdr_theme", theme, 31536000, false)
 
 	if isHTMXRequest(r) {
 		setHTMXTriggers(w, htmxTriggers{"setTheme": theme})
