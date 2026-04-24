@@ -7,3 +7,4 @@ bin/
 PROJECT_PROGRESS.md
 LEAD_PROJECT_STATE.md
 coverage.out
+.test-mutations.json
