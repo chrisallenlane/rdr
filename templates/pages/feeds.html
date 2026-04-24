@@ -9,6 +9,7 @@
           hx-swap="outerHTML"
           data-reset-on-success>
         <fieldset role="group">
+            <legend class="sr-only">Add feed</legend>
             <input type="url" name="url" aria-label="Feed URL" placeholder="https://example.com" required>
             <button type="submit"><span class="btn-text">Add Feed</span><span class="btn-spinner" aria-hidden="true">⟳</span></button>
         </fieldset>
@@ -31,6 +32,7 @@
       hx-encoding="multipart/form-data"
       data-reset-on-success>
     <fieldset role="group">
+        <legend class="sr-only">Import or export OPML</legend>
         <input type="file" name="opml" aria-label="OPML file" accept=".opml,.xml" required>
         <button type="submit"><span class="btn-text">Import OPML</span><span class="btn-spinner" aria-hidden="true">⟳</span></button>
         <a href="/feeds/export" role="button">Export OPML</a>

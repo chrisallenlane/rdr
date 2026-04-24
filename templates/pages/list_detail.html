@@ -3,6 +3,7 @@
 <header class="list-detail-header">
     <form method="post" action="/lists/{{.Content.List.ID}}/rename" hx-post="/lists/{{.Content.List.ID}}/rename" hx-swap="none">
         <fieldset role="group">
+            <legend class="sr-only">Rename list</legend>
             <input type="text" name="name" value="{{.Content.List.Name}}" aria-label="List name" required>
             <button type="submit">Rename</button>
         </fieldset>

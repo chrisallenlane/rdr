@@ -31,6 +31,7 @@
     --highlight: #b58900;  /* yellow */
     --success: #859900;    /* green */
     --sidebar-active: #c9ba91; /* warm tan — active sidebar item */
+    --sidebar-active-fg: #002b36; /* base03 — dark, >= 4.5:1 on warm tan */
 }
 
 /* Solarized Dark */
@@ -48,6 +49,7 @@
     --highlight: #b58900;  /* yellow */
     --success: #859900;    /* green */
     --sidebar-active: #2a7a8a; /* bright teal — active sidebar item */
+    --sidebar-active-fg: #ffffff; /* >= 4.5:1 on bright teal */
 }
 
 /* Modus Operandi (high-contrast light) — WCAG AAA */
@@ -65,6 +67,7 @@
     --highlight: #6f5500;
     --success: #006800;
     --sidebar-active: #b0b0b0; /* medium gray — active sidebar item */
+    --sidebar-active-fg: #000000;
 }
 
 /* Modus Vivendi (high-contrast dark) — WCAG AAA */
@@ -82,6 +85,7 @@
     --highlight: #d0bc00;
     --success: #44bc44;
     --sidebar-active: #505050; /* visible gray — active sidebar item */
+    --sidebar-active-fg: #ffffff;
 }
 
 /* Auto: follow OS preference — defaults to Modus pair for WCAG AAA */
@@ -99,6 +103,7 @@
     --highlight: #6f5500;
     --success: #006800;
     --sidebar-active: #b0b0b0;
+    --sidebar-active-fg: #000000;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -116,6 +121,7 @@
         --highlight: #d0bc00;
         --success: #44bc44;
         --sidebar-active: #505050;
+        --sidebar-active-fg: #ffffff;
     }
 }
 
@@ -425,6 +431,8 @@ td:last-child:has(button, form) {
 .items-layout aside a { display: block; }
 .items-layout aside [aria-current="true"] {
     background-color: var(--sidebar-active);
+    color: var(--sidebar-active-fg);
+    font-weight: 600;
     border-radius: 3px;
     padding: 0.15rem 0.35rem;
 }

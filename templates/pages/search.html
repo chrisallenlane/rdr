@@ -4,6 +4,7 @@
 
 <form method="get" action="/search">
     <fieldset role="group">
+        <legend class="sr-only">Search items</legend>
         <input type="search" name="q" value="{{.Content.Query}}" aria-label="Search items" placeholder="Search items..." autofocus
                hx-get="/search"
                hx-trigger="keyup changed delay:300ms, search"
