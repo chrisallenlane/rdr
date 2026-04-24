@@ -95,6 +95,40 @@ func TestHandleRegister(t *testing.T) {
 		},
 	}
 
+	// Duplicate-username check runs separately because it needs an
+	// existing user in the DB and verifies the rendered error message.
+	t.Run("duplicate username shows friendly error", func(t *testing.T) {
+		s := newTestServer(t)
+		createTestUser(t, s, "taken", "testpass1")
+
+		form := url.Values{
+			"username":         {"taken"},
+			"password":         {"securepass"},
+			"password_confirm": {"securepass"},
+		}
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/register",
+			strings.NewReader(form.Encode()),
+		)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if !strings.Contains(rec.Body.String(), "Username is already taken") {
+			t.Errorf("body should mention 'Username is already taken'; got %q", rec.Body.String())
+		}
+		for _, c := range rec.Result().Cookies() {
+			if c.Name == "rdr_session" {
+				t.Error("no session cookie should be set on duplicate-username registration")
+			}
+		}
+	})
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newTestServer(t)

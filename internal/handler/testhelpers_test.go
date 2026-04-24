@@ -21,12 +21,12 @@ const testBaseHTML = `<!DOCTYPE html>
 
 var testTemplateFS = fstest.MapFS{
 	"templates/layout/base.html":       {Data: []byte(testBaseHTML)},
-	"templates/pages/login.html":       {Data: []byte(`{{define "title"}}Login{{end}}{{define "content"}}login{{end}}`)},
-	"templates/pages/register.html":    {Data: []byte(`{{define "title"}}Register{{end}}{{define "content"}}register{{end}}`)},
+	"templates/pages/login.html":       {Data: []byte(`{{define "title"}}Login{{end}}{{define "content"}}login {{with .Content.Error}}err:{{.}}{{end}}{{end}}`)},
+	"templates/pages/register.html":    {Data: []byte(`{{define "title"}}Register{{end}}{{define "content"}}register {{with .Content.Error}}err:{{.}}{{end}}{{end}}`)},
 	"templates/pages/error.html":       {Data: []byte(`{{define "title"}}Error{{end}}{{define "content"}}{{.Content}}{{end}}`)},
 	"templates/pages/items.html":       {Data: []byte(`{{define "title"}}Items{{end}}{{define "content"}}items{{end}}`)},
 	"templates/pages/item.html":        {Data: []byte(`{{define "title"}}Item{{end}}{{define "content"}}item{{end}}`)},
-	"templates/pages/feeds.html":       {Data: []byte(`{{define "title"}}Feeds{{end}}{{define "content"}}feeds{{end}}`)},
+	"templates/pages/feeds.html":       {Data: []byte(`{{define "title"}}Feeds{{end}}{{define "content"}}feeds {{with .Content.Error}}err:{{.}}{{end}}{{end}}`)},
 	"templates/pages/search.html":      {Data: []byte(`{{define "title"}}Search{{end}}{{define "content"}}search{{end}}`)},
 	"templates/pages/lists.html":       {Data: []byte(`{{define "title"}}Lists{{end}}{{define "content"}}lists{{end}}`)},
 	"templates/pages/list_detail.html": {Data: []byte(`{{define "title"}}List{{end}}{{define "content"}}list_detail{{end}}`)},

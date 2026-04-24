@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/chrisallenlane/rdr/internal/discover"
 )
 
 // postFeedForm creates an authenticated POST /feeds request with the given
@@ -185,6 +188,80 @@ func TestHandleFeeds(t *testing.T) {
 	}
 	if feeds[0].Title != "A Feed" || feeds[1].Title != "B Feed" {
 		t.Errorf("feeds not in alphabetical order: got %q, %q", feeds[0].Title, feeds[1].Title)
+	}
+}
+
+func TestHandleAddFeed_NoFeedFound(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "testuser", "testpass1")
+
+	// Stub the resolver to return discover.ErrNoFeedFound so we exercise
+	// the dedicated error branch rather than the generic fetch-failure one.
+	s.feedResolver = func(_ context.Context, _ string) (string, error) {
+		return "", discover.ErrNoFeedFound
+	}
+
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(
+		rec,
+		postFeedForm(t, s, userID, url.Values{"url": {"https://example.com/no-feed-here"}}),
+	)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), "Could not find an RSS or Atom feed") {
+		t.Errorf("body should mention ErrNoFeedFound message; got %q", rec.Body.String())
+	}
+
+	// No feed row should be created on discovery failure.
+	var count int
+	if err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM feeds WHERE user_id = ?", userID,
+	).Scan(&count); err != nil {
+		t.Fatalf("querying feed count: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("feed count = %d, want 0 (no feed should be created when discovery fails)", count)
+	}
+}
+
+func TestHandleAddFeed_DuplicateURL(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "testuser", "testpass1")
+
+	feedURL := "https://example.com/feed.xml"
+	// Pre-seed the feed so the second POST hits the unique-violation path.
+	if _, err := s.db.Exec(
+		"INSERT INTO feeds (user_id, url) VALUES (?, ?)",
+		userID, feedURL,
+	); err != nil {
+		t.Fatalf("seeding feed: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(
+		rec,
+		postFeedForm(t, s, userID, url.Values{"url": {feedURL}}),
+	)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), "already added") {
+		t.Errorf("body should mention duplicate feed; got %q", rec.Body.String())
+	}
+
+	// Still exactly one row — no accidental second insert.
+	var count int
+	if err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM feeds WHERE user_id = ? AND url = ?",
+		userID, feedURL,
+	).Scan(&count); err != nil {
+		t.Fatalf("querying feed count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("feed count = %d, want 1", count)
 	}
 }
 
