@@ -8,7 +8,9 @@ import (
 )
 
 // UserAgent is the User-Agent header value sent on all outbound requests.
-const UserAgent = "rdr/1.0"
+// Kept at major.minor.patch so feed publishers can distinguish rdr versions
+// if they log User-Agent. Bump this alongside CHANGELOG releases.
+const UserAgent = "rdr/1.0.0"
 
 // MaxResponseSize is the maximum response body size (10 MB) accepted when
 // fetching feeds or performing feed discovery.

@@ -50,10 +50,12 @@ at the proxy layer.
 ### Docker
 
 ```bash
-docker run -p 8080:8080 -v rdr-data:/data rdr
+docker compose up -d
 ```
 
-Open <http://localhost:8080>, register an account, and add feeds.
+This builds the image from the included Dockerfile and starts the service
+on port 8080. Open <http://localhost:8080>, register an account, and add
+feeds.
 
 ### Binary
 

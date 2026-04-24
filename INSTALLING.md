@@ -2,27 +2,29 @@
 
 ## Quick Start
 
-### Docker
-
-```bash
-docker run -p 8080:8080 -v rdr-data:/data rdr
-```
-
-Open <http://localhost:8080>, register an account, and add feeds.
-
-### Binary
-
-```bash
-./rdr
-```
-
-### Docker Compose
+### Docker Compose (recommended)
 
 ```bash
 docker compose up -d
 ```
 
-See `docker-compose.yml` for the full service definition.
+Builds the image from the included `Dockerfile` and starts the service on
+port 8080 with a named volume for persistent data. Open
+<http://localhost:8080>, register an account, and add feeds.
+
+### Docker (manual)
+
+```bash
+make docker                             # build the image (rdr:latest)
+docker run -p 8080:8080 -v rdr-data:/data rdr
+```
+
+### Binary
+
+```bash
+make build
+./bin/rdr
+```
 
 ### Building Tagged Images
 

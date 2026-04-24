@@ -1,5 +1,8 @@
-# Build stage
-FROM golang:1.25-alpine AS builder
+# Build stage.
+# Pinned to an explicit Go patch to guarantee the crypto/tls and crypto/x509
+# stdlib security patches listed in go.mod (go 1.25.9) land in the built
+# binary. Bump together with the go.mod directive.
+FROM golang:1.25.9-alpine AS builder
 ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
