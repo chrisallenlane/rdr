@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -173,7 +174,14 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 
 	data, err := io.ReadAll(file)
 	if err != nil {
-		flashAndRedirect("File too large (max 1 MB).")
+		// Distinguish MaxBytesReader's size-overflow error from a generic
+		// read failure so the user sees an accurate message.
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			flashAndRedirect("File too large (max 1 MB).")
+		} else {
+			flashAndRedirect("Could not read uploaded file.")
+		}
 		return
 	}
 

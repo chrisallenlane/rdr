@@ -15,14 +15,20 @@ func isHTMXRequest(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
 
-// refererPath returns the path component of the request's Referer header,
-// or fallback if the header is missing, unparseable, or has an empty path.
-// Using only the path prevents open redirects to external sites.
+// refererPath returns the path (including query string) of the request's
+// Referer header, or fallback if the header is missing, unparseable, or has
+// an empty path. Only the path + query are kept so an attacker cannot use
+// Referer to open-redirect to another origin; the scheme/host are dropped
+// regardless of what the referrer claimed.
 func refererPath(r *http.Request, fallback string) string {
-	if parsed, err := url.Parse(r.Header.Get("Referer")); err == nil && parsed.Path != "" {
-		return parsed.Path
+	parsed, err := url.Parse(r.Header.Get("Referer"))
+	if err != nil || parsed.Path == "" {
+		return fallback
 	}
-	return fallback
+	if parsed.RawQuery != "" {
+		return parsed.Path + "?" + parsed.RawQuery
+	}
+	return parsed.Path
 }
 
 const itemsPerPage = 50

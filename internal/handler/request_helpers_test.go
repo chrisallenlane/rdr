@@ -40,10 +40,16 @@ func TestRefererPath(t *testing.T) {
 			want:     "/feeds",
 		},
 		{
-			name:     "referer with query string returns only path",
+			name:     "referer with query string preserves path and query",
 			referer:  "http://localhost:8080/items?feed=3&unread=1",
 			fallback: "/feeds",
-			want:     "/items",
+			want:     "/items?feed=3&unread=1",
+		},
+		{
+			name:     "referer from external origin returns path+query only (no scheme/host)",
+			referer:  "https://evil.example.com/attacker?x=1",
+			fallback: "/feeds",
+			want:     "/attacker?x=1",
 		},
 	}
 

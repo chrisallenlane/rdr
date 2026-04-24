@@ -170,12 +170,34 @@ func download(ctx context.Context, faviconURL string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("favicon too large (>%d bytes)", maxSize)
 	}
 
+	// Prefer the server-declared Content-Type, but fall back to byte-level
+	// sniffing when the header is missing or unrecognised. A misconfigured
+	// server that serves e.g. a PNG as application/octet-stream would
+	// otherwise land on the default .ico extension and confuse Content-Type
+	// negotiation on later serves.
 	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
+	if !isRecognisedImageContentType(contentType) {
 		contentType = http.DetectContentType(data)
 	}
 
 	return data, contentType, nil
+}
+
+// isRecognisedImageContentType reports whether ct (which may include
+// parameters) matches one of the known image MIME types we map to specific
+// file extensions. Used to decide whether to trust the server header or
+// fall back to byte-level sniffing.
+func isRecognisedImageContentType(ct string) bool {
+	ct = strings.ToLower(ct)
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	switch ct {
+	case "image/png", "image/jpeg", "image/gif", "image/svg+xml",
+		"image/webp", "image/x-icon", "image/vnd.microsoft.icon":
+		return true
+	}
+	return false
 }
 
 // extensionFromContentType maps a content type to a file extension.
