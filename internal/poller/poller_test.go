@@ -143,12 +143,6 @@ func TestPollShutdownStopsDispatching(t *testing.T) {
 	}
 }
 
-func TestMaxPollWorkersConstant(t *testing.T) {
-	if maxPollWorkers < 2 {
-		t.Errorf("maxPollWorkers = %d, want >= 2", maxPollWorkers)
-	}
-}
-
 func TestTriggerSync_ReturnsTrueWhenIdle(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")

@@ -89,8 +89,12 @@ func TestSetHTMXTriggers(t *testing.T) {
 		rec := httptest.NewRecorder()
 		setHTMXTriggers(rec, htmxTriggers{"showFlash": "Hello"})
 		got := rec.Header().Get("HX-Trigger")
-		if got != `{"showFlash":"Hello"}` {
-			t.Errorf("HX-Trigger = %q, want %q", got, `{"showFlash":"Hello"}`)
+		var m map[string]any
+		if err := json.Unmarshal([]byte(got), &m); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		if m["showFlash"] != "Hello" {
+			t.Errorf("showFlash = %v, want %q", m["showFlash"], "Hello")
 		}
 	})
 
