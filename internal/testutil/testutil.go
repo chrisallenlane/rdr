@@ -12,7 +12,7 @@ import (
 	"github.com/chrisallenlane/rdr/internal/model"
 )
 
-// OpenTestDB opens a temporary on-disk SQLite database, runs all migrations,
+// OpenTestDB opens a temporary on-disk SQLite database, applies the schema,
 // and registers cleanup with t.Cleanup. The returned *sql.DB is ready to use.
 func OpenTestDB(t *testing.T) *sql.DB {
 	t.Helper()
