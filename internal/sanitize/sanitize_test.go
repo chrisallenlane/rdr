@@ -3,6 +3,7 @@ package sanitize
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestHTML(t *testing.T) {
@@ -437,5 +438,128 @@ func FuzzHighlightCodeBlocks(f *testing.F) {
 	f.Fuzz(func(t *testing.T, html string) {
 		// Must never panic.
 		_ = HighlightCodeBlocks(html)
+	})
+}
+
+func TestSummarize(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		maxLen int
+		want   string
+	}{
+		{
+			name:   "short text returned verbatim",
+			input:  "hello world",
+			maxLen: 100,
+			want:   "hello world",
+		},
+		{
+			name:   "block boundaries insert spaces",
+			input:  "<p>foo</p><p>bar</p>",
+			maxLen: 100,
+			want:   "foo bar",
+		},
+		{
+			name:   "HTML entities are decoded",
+			input:  "Tom &amp; Jerry",
+			maxLen: 100,
+			want:   "Tom & Jerry",
+		},
+		{
+			name:   "tags are stripped",
+			input:  "<p><strong>Bold</strong> text</p>",
+			maxLen: 100,
+			want:   "Bold text",
+		},
+		{
+			name: "truncation at last space before maxLen appends ellipsis",
+			// Input length 43, maxLen 20. text[:20] = "the quick brown fox "
+			// (trailing space at index 19). LastIndex keeps "the quick brown fox",
+			// appends "..."
+			input:  "the quick brown fox jumps over the lazy dog",
+			maxLen: 20,
+			want:   "the quick brown fox...",
+		},
+		{
+			name:   "multiple whitespace collapses to single space",
+			input:  "foo   bar\n\nbaz",
+			maxLen: 100,
+			want:   "foo bar baz",
+		},
+		{
+			name:   "exactly maxLen returned unchanged",
+			input:  "12345",
+			maxLen: 5,
+			want:   "12345",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Summarize(tt.input, tt.maxLen)
+			if got != tt.want {
+				t.Errorf("Summarize(%q, %d) = %q, want %q", tt.input, tt.maxLen, got, tt.want)
+			}
+		})
+	}
+}
+
+func FuzzSummarize(f *testing.F) {
+	f.Add("<p>hello world</p>", 100)
+	f.Add("plain text", 10)
+	f.Add("", 50)
+	f.Add("<p>foo</p><p>bar</p>", 15)
+	f.Add("a&#x1F600;b", 10) // multi-byte content
+	f.Add("text with no spaces for truncation edge case", 5)
+
+	f.Fuzz(func(t *testing.T, raw string, maxLen int) {
+		if maxLen <= 0 {
+			return
+		}
+		out := Summarize(raw, maxLen)
+		// Output bytes must be valid UTF-8: strictPolicy + entity-decode are
+		// UTF-8-safe, but byte-level truncation at text[:maxLen] could cut a
+		// rune. The current implementation may leave dangling bytes — this
+		// test pins the contract, and if it flags we have a real bug.
+		if !utf8.ValidString(out) {
+			t.Errorf("Summarize(%q, %d) = %q: result is not valid UTF-8", raw, maxLen, out)
+		}
+		// Bounded output length.
+		if len(out) > maxLen+3 {
+			t.Errorf("Summarize(%q, %d) len = %d, want <= %d", raw, maxLen, len(out), maxLen+3)
+		}
+	})
+}
+
+func FuzzSnippet(f *testing.F) {
+	f.Add("plain text")
+	f.Add("[[HIGHLIGHT]]match[[/HIGHLIGHT]]")
+	f.Add("<script>alert(1)</script>")
+	f.Add("[[HIGHLIGHT]]<img src=x>[[/HIGHLIGHT]]")
+	f.Add("")
+
+	f.Fuzz(func(t *testing.T, s string) {
+		out := string(Snippet(s))
+		// The only permitted tags in Snippet output are <mark> and </mark>.
+		// strictPolicy sanitizes input first; any other tag in output would be
+		// a bluemonday-policy escape.
+		lower := strings.ToLower(out)
+		if i := strings.Index(lower, "<"); i >= 0 {
+			// Walk each '<' and verify it begins a mark tag.
+			for j := i; j < len(lower); {
+				k := strings.Index(lower[j:], "<")
+				if k < 0 {
+					break
+				}
+				k += j
+				rest := lower[k:]
+				if !strings.HasPrefix(rest, "<mark>") && !strings.HasPrefix(rest, "</mark>") {
+					t.Errorf("Snippet(%q) = %q: contains unexpected tag at byte %d", s, out, k)
+					return
+				}
+				j = k + 1
+			}
+		}
 	})
 }
