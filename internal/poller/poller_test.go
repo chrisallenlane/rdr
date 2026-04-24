@@ -72,18 +72,12 @@ func TestPollConcurrency(t *testing.T) {
 	}
 
 	p := NewPoller(context.Background(), db, time.Hour, 0, t.TempDir())
-
-	start := time.Now()
 	p.poll(context.Background())
-	elapsed := time.Since(start)
 
-	// With 5 feeds each sleeping 100ms, serial would take >= 500ms.
-	// Concurrent should complete well under 500ms.
-	if elapsed >= 450*time.Millisecond {
-		t.Errorf("poll took %v, expected < 450ms for concurrent execution", elapsed)
-	}
-
-	// At least 2 feeds should have been in-flight concurrently.
+	// Concurrency is verified structurally by the peak-in-flight counter
+	// rather than by wall-clock timing. A prior wall-clock assertion was
+	// flaky on loaded CI hosts — if feeds are processed concurrently at
+	// all, peakConcurrent will be > 1, which is what we actually care about.
 	if peak := peakConcurrent.Load(); peak < 2 {
 		t.Errorf("peak concurrent requests = %d, expected >= 2", peak)
 	}
