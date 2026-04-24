@@ -1,23 +1,104 @@
-name: Build and push Docker image
+name: CI
 
 on:
   push:
-    branches: [master]
+    branches: ['**']
+    tags: ['v*']
+
+# Cancel an in-flight run when a newer commit lands on the same branch or
+# tag. Protects against build queue buildup during a chain of quick pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: linux-amd64
+    # Pin to the same Go patch as the Dockerfile so the toolchain that runs
+    # tests is the toolchain that builds the production binary.
+    container: golang:1.25.9-alpine
+    steps:
+      - name: Install system packages
+        # alpine is minimal: bring in the tools the lint and prettier steps
+        # need. bash is required for actions/checkout's bundled scripts.
+        run: apk add --no-cache bash curl git nodejs npm
+
+      - uses: actions/checkout@v4
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v2.11.3/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin" v2.11.3
+
+      - name: gofmt check
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "files need formatting:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        run: golangci-lint run ./...
+
+      - name: prettier check
+        run: npx prettier --check 'static/js/**/*.js'
+
+      - name: eslint
+        run: npx eslint --ignore-pattern 'static/js/htmx.min.js' static/js/
+
+      - name: go test
+        run: go test -count=1 ./...
+
+      - name: go build
+        run: go build ./cmd/rdr
+
   build:
+    needs: test
     runs-on: linux-amd64
     container: catthehacker/ubuntu:act-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Login to Gitea registry
-        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login gitea.nas.lab.chris-allen-lane.com -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
-
-      - name: Build and push
         run: |
-          docker build \
-            --build-arg VERSION=${{ github.sha }} \
-            -t gitea.nas.lab.chris-allen-lane.com/chrisallenlane/rdr:latest \
-            .
-          docker push gitea.nas.lab.chris-allen-lane.com/chrisallenlane/rdr:latest
+          echo "${{ secrets.REGISTRY_PASSWORD }}" \
+            | docker login gitea.nas.lab.chris-allen-lane.com \
+                -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
+
+      - name: Compute image tags and build version
+        id: meta
+        # Every build gets a :sha-<short> tag (immutable, pullable per commit).
+        # master additionally gets :latest. A v* tag additionally gets :<tag>
+        # and uses the tag name as the VERSION build arg.
+        run: |
+          REPO="gitea.nas.lab.chris-allen-lane.com/chrisallenlane/rdr"
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          TAGS="${REPO}:sha-${SHORT_SHA}"
+          VERSION="${SHORT_SHA}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAGS="${TAGS} ${REPO}:${GITHUB_REF_NAME}"
+            VERSION="${GITHUB_REF_NAME}"
+          elif [ "${GITHUB_REF_NAME}" = "master" ]; then
+            TAGS="${TAGS} ${REPO}:latest"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        run: |
+          args=""
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            args="$args -t $tag"
+          done
+          docker build --build-arg VERSION=${{ steps.meta.outputs.version }} $args .
+
+      - name: Push image
+        run: |
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            docker push "$tag"
+          done

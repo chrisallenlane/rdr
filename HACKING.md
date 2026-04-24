@@ -24,10 +24,12 @@ Requires Go 1.25+.
 
 ## CI Workflow
 
-`.gitea/workflows/build.yaml` is author-specific. The author uses Gitea as the
-primary repository host and pushes Docker images to a private Gitea registry on
-each commit to `master`. GitHub contributors can safely ignore this file — it
-will not run on GitHub and is not required to use or contribute to the project.
+`.gitea/workflows/build.yaml` is author-specific. The author uses Gitea as
+the primary repository host. On every push, the workflow runs lint + tests
++ build, then publishes a Docker image to a private Gitea registry tagged
+`:sha-<short>` (always), `:latest` (master only), and `:<tag>` (on `v*`
+tag pushes). GitHub contributors can safely ignore this file — it will not
+run on GitHub and is not required to use or contribute to the project.
 
 ## Architecture
 
