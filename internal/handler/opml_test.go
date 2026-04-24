@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -1003,6 +1004,39 @@ func TestHandleImportOPML_FileTooLarge(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("feed count = %d, want 0 (oversized file should be rejected)", count)
+	}
+}
+
+func TestHandleImportOPML_TooManyFeeds(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "testuser", "testpass1")
+
+	// Build an OPML with one more feed entry than the cap allows. Keep each
+	// outline short so the whole payload stays well under maxOPMLSize.
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?><opml version="2.0"><head><title>Test</title></head><body>`)
+	for i := 0; i < maxOPMLFeedCount+1; i++ {
+		fmt.Fprintf(&b, `<outline type="rss" xmlUrl="https://example.com/%d"/>`, i)
+	}
+	b.WriteString(`</body></opml>`)
+
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, postOPMLImport(t, s, userID, b.String()))
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+
+	// No feeds should have been created — the cap should reject the whole
+	// import before any inserts.
+	var count int
+	if err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM feeds WHERE user_id = ?", userID,
+	).Scan(&count); err != nil {
+		t.Fatalf("querying feeds: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("feed count = %d, want 0 (oversized feed list should be rejected)", count)
 	}
 }
 

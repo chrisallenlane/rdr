@@ -26,6 +26,8 @@ func TestSecurityHeaders_CSP(t *testing.T) {
 		"script-src 'self'",
 		"default-src 'self'",
 		"style-src 'self'",
+		"base-uri 'self'",
+		"form-action 'self'",
 	}
 	for _, d := range directives {
 		if !strings.Contains(got, d) {

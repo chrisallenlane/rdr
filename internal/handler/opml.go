@@ -144,6 +144,13 @@ func (s *Server) handleExportOPML(w http.ResponseWriter, r *http.Request) {
 // maxOPMLSize is the maximum allowed size for an uploaded OPML file (1 MB).
 const maxOPMLSize = 1 << 20
 
+// maxOPMLFeedCount caps the number of feed entries processed from a single
+// OPML import. A 1 MB OPML can easily pack tens of thousands of <outline>
+// elements; combined with the single-connection SQLite driver, an
+// unbounded import would stall the application for all users while it
+// walked every row.
+const maxOPMLFeedCount = 5000
+
 func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 	htmx := isHTMXRequest(r)
@@ -182,6 +189,10 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 	feeds := collectFeedsWithFolder(doc.Body.Outlines, "")
 	if len(feeds) == 0 {
 		flashAndRedirect("No feeds found in the uploaded file.")
+		return
+	}
+	if len(feeds) > maxOPMLFeedCount {
+		flashAndRedirect(fmt.Sprintf("OPML file contains %d feeds; the maximum is %d.", len(feeds), maxOPMLFeedCount))
 		return
 	}
 
