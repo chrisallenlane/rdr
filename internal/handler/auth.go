@@ -53,8 +53,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := hashPassword(password)
 	if err != nil {
-		slog.Error("hashing password", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "hashing password", err)
 		return
 	}
 
@@ -68,21 +67,18 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 			renderErr("Username is already taken.")
 			return
 		}
-		slog.Error("inserting user", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "inserting user", err)
 		return
 	}
 
 	userID, err := result.LastInsertId()
 	if err != nil {
-		slog.Error("getting last insert id", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "getting last insert id", err)
 		return
 	}
 
 	if err := s.createSession(w, r, userID); err != nil {
-		slog.Error("creating session", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "creating session", err)
 		return
 	}
 
@@ -127,8 +123,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.createSession(w, r, userID); err != nil {
-		slog.Error("creating session", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "creating session", err)
 		return
 	}
 

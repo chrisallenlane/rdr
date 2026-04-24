@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -77,8 +76,7 @@ func (s *Server) handleListDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		slog.Error("querying list", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "querying list", err)
 		return
 	}
 	if t := parseTime(createdAt); t != nil {
@@ -87,8 +85,7 @@ func (s *Server) handleListDetail(w http.ResponseWriter, r *http.Request) {
 
 	inList, notInList, err := s.queryListFeeds(listID, user.ID)
 	if err != nil {
-		slog.Error("querying list feeds", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "querying list feeds", err)
 		return
 	}
 
@@ -130,16 +127,14 @@ func (s *Server) handleAddFeedToList(w http.ResponseWriter, r *http.Request) {
 		listID, feedID, user.ID,
 	)
 	if err != nil {
-		slog.Error("adding feed to list", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "adding feed to list", err)
 		return
 	}
 
 	if isHTMXRequest(r) {
 		inList, notInList, err := s.queryListFeeds(listID, user.ID)
 		if err != nil {
-			slog.Error("querying list feeds", "error", err)
-			s.renderInternalError(w, r)
+			s.internalError(w, r, "querying list feeds", err)
 			return
 		}
 		flash(w, r, "Feed added to list.")
@@ -193,8 +188,7 @@ func (s *Server) handleRenameList(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, fmt.Sprintf("/lists/%d", listID), http.StatusSeeOther)
 			return
 		}
-		slog.Error("renaming list", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "renaming list", err)
 		return
 	}
 
@@ -234,16 +228,14 @@ func (s *Server) handleRemoveFeedFromList(w http.ResponseWriter, r *http.Request
 		feedID, user.ID,
 	)
 	if err != nil {
-		slog.Error("removing feed from list", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "removing feed from list", err)
 		return
 	}
 
 	if isHTMXRequest(r) {
 		inList, notInList, err := s.queryListFeeds(listID, user.ID)
 		if err != nil {
-			slog.Error("querying list feeds", "error", err)
-			s.renderInternalError(w, r)
+			s.internalError(w, r, "querying list feeds", err)
 			return
 		}
 		flash(w, r, "Feed removed from list.")

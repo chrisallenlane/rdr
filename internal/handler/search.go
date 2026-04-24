@@ -110,8 +110,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			&starred,
 			&sr.FeedTitle, &titleSnippet, &contentSnippet,
 		); err != nil {
-			slog.Error("scanning search result row", "error", err)
-			s.renderInternalError(w, r)
+			s.internalError(w, r, "scanning search result row", err)
 			return
 		}
 		sr.PublishedAt = parseTime(publishedAt)
@@ -122,8 +121,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		results = append(results, sr)
 	}
 	if err := rows.Err(); err != nil {
-		slog.Error("iterating search result rows", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "iterating search result rows", err)
 		return
 	}
 

@@ -26,8 +26,7 @@ type feedsPageData struct {
 func (s *Server) renderFeedsTableFragment(w http.ResponseWriter, r *http.Request, userID int64) bool {
 	feeds, err := s.queryUserFeedsWithCounts(userID)
 	if err != nil {
-		slog.Error("querying feeds", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "querying feeds", err)
 		return false
 	}
 	s.renderFragment(w, "feeds_table.html", feeds)
@@ -68,8 +67,7 @@ func (s *Server) handleFeeds(w http.ResponseWriter, r *http.Request) {
 
 	feeds, err := s.queryUserFeedsWithCounts(user.ID)
 	if err != nil {
-		slog.Error("querying feeds", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "querying feeds", err)
 		return
 	}
 
@@ -128,15 +126,13 @@ func (s *Server) handleAddFeed(w http.ResponseWriter, r *http.Request) {
 			renderErr("You have already added this feed.")
 			return
 		}
-		slog.Error("inserting feed", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "inserting feed", err)
 		return
 	}
 
 	feedID, err := result.LastInsertId()
 	if err != nil {
-		slog.Error("getting feed id", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "getting feed id", err)
 		return
 	}
 
@@ -175,8 +171,7 @@ func (s *Server) handleDeleteFeed(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if _, err := s.db.Exec("DELETE FROM feeds WHERE id = ? AND user_id = ?", id, user.ID); err != nil {
-			slog.Error("deleting feed", "error", err)
-			s.renderInternalError(w, r)
+			s.internalError(w, r, "deleting feed", err)
 			return
 		}
 		flash(w, r, "Feed removed.")

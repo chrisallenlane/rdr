@@ -3,7 +3,6 @@ package handler
 import (
 	"database/sql"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/chrisallenlane/rdr/internal/middleware"
@@ -134,8 +133,7 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 		r.URL.Query().Get("starred") == "1",
 	)
 	if err != nil {
-		slog.Error("querying items", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "querying items", err)
 		return
 	}
 
@@ -176,23 +174,20 @@ func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.db.Exec(query, args...)
 	if err != nil {
-		slog.Error("marking items as read", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "marking items as read", err)
 		return
 	}
 
 	affected, err := result.RowsAffected()
 	if err != nil {
-		slog.Error("getting rows affected", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "getting rows affected", err)
 		return
 	}
 
 	if isHTMXRequest(r) {
 		data, err := s.queryItemsPageData(user.ID, 1, filterFeed, filterList, false, false)
 		if err != nil {
-			slog.Error("querying items for HTMX", "error", err)
-			s.renderInternalError(w, r)
+			s.internalError(w, r, "querying items for HTMX", err)
 			return
 		}
 		htmxSettings := queryUserSettings(s.db, user.ID)

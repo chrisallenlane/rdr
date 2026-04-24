@@ -55,8 +55,7 @@ func (s *Server) handleExportOPML(w http.ResponseWriter, r *http.Request) {
 		user.ID,
 	)
 	if err != nil {
-		slog.Error("querying feeds for OPML export", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "querying feeds for OPML export", err)
 		return
 	}
 	defer func() { _ = rows.Close() }()
@@ -71,8 +70,7 @@ func (s *Server) handleExportOPML(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var feedURL, title, siteURL, listName string
 		if err := rows.Scan(&feedURL, &title, &siteURL, &listName); err != nil {
-			slog.Error("scanning feed for OPML export", "error", err)
-			s.renderInternalError(w, r)
+			s.internalError(w, r, "scanning feed for OPML export", err)
 			return
 		}
 
@@ -103,8 +101,7 @@ func (s *Server) handleExportOPML(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		slog.Error("iterating feeds for OPML export", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "iterating feeds for OPML export", err)
 		return
 	}
 

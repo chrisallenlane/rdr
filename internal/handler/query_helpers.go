@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/chrisallenlane/rdr/internal/middleware"
@@ -151,8 +150,7 @@ func (s *Server) verifyOwnership(
 	userID int64,
 ) bool {
 	if !allowedTables[table] {
-		slog.Error("verifyOwnership called with invalid table", "table", table)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "verifyOwnership called with invalid table", nil, "table", table)
 		return false
 	}
 
@@ -163,8 +161,7 @@ func (s *Server) verifyOwnership(
 	)
 	err := s.db.QueryRow(query, id, userID).Scan(&count)
 	if err != nil {
-		slog.Error("verifying ownership", "table", table, "id", id, "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "verifying ownership", err, "table", table, "id", id)
 		return false
 	}
 	if count == 0 {
@@ -182,8 +179,7 @@ func (s *Server) verifyOwnership(
 // callers must return immediately after calling it.
 func (s *Server) deleteByID(w http.ResponseWriter, r *http.Request, table, entity, redirect string) {
 	if !allowedTables[table] {
-		slog.Error("deleteByID called with invalid table", "table", table)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "deleteByID called with invalid table", nil, "table", table)
 		return
 	}
 
@@ -199,15 +195,13 @@ func (s *Server) deleteByID(w http.ResponseWriter, r *http.Request, table, entit
 		id, user.ID,
 	)
 	if err != nil {
-		slog.Error("deleting "+entity, "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "deleting "+entity, err)
 		return
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		slog.Error("checking rows affected", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "checking rows affected", err)
 		return
 	}
 	if rows == 0 {

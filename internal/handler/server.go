@@ -225,8 +225,16 @@ func (s *Server) renderError(w http.ResponseWriter, r *http.Request, statusCode 
 	})
 }
 
-// renderInternalError renders a generic 500 error page.
-func (s *Server) renderInternalError(w http.ResponseWriter, r *http.Request) {
+// internalError logs at Error level and renders a generic 500 page. Pass
+// err=nil for defensive-programming paths where no Go error is available.
+// extraAttrs are forwarded to slog as key/value pairs alongside the error.
+// Callers should return immediately after invoking this helper.
+func (s *Server) internalError(w http.ResponseWriter, r *http.Request, msg string, err error, extraAttrs ...any) {
+	if err != nil {
+		slog.Error(msg, append(extraAttrs, "error", err)...)
+	} else {
+		slog.Error(msg, extraAttrs...)
+	}
 	s.renderError(w, r, http.StatusInternalServerError, "Internal Server Error")
 }
 

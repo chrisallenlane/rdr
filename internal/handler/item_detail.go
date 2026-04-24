@@ -79,8 +79,7 @@ func (s *Server) handleItemDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		slog.Error("querying item", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "querying item", err)
 		return
 	}
 	item.PublishedAt = parseTime(publishedAt)

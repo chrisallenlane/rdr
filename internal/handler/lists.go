@@ -2,7 +2,6 @@ package handler
 
 import (
 	"database/sql"
-	"log/slog"
 	"net/http"
 	"strings"
 
@@ -21,8 +20,7 @@ type listsPageData struct {
 func (s *Server) renderListsTableFragment(w http.ResponseWriter, r *http.Request, userID int64) bool {
 	lists, err := s.queryUserListsWithCounts(userID)
 	if err != nil {
-		slog.Error("querying lists", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "querying lists", err)
 		return false
 	}
 	s.renderFragment(w, "lists_table.html", lists)
@@ -64,8 +62,7 @@ func (s *Server) handleLists(w http.ResponseWriter, r *http.Request) {
 
 	lists, err := s.queryUserListsWithCounts(user.ID)
 	if err != nil {
-		slog.Error("querying lists", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "querying lists", err)
 		return
 	}
 
@@ -106,8 +103,7 @@ func (s *Server) handleCreateList(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		slog.Error("inserting list", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "inserting list", err)
 		return
 	}
 
@@ -132,8 +128,7 @@ func (s *Server) handleDeleteList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if _, err := s.db.Exec("DELETE FROM lists WHERE id = ? AND user_id = ?", id, user.ID); err != nil {
-			slog.Error("deleting list", "error", err)
-			s.renderInternalError(w, r)
+			s.internalError(w, r, "deleting list", err)
 			return
 		}
 		flash(w, r, "List removed.")

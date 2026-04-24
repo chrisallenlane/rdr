@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -36,8 +35,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		user.ID, showDescriptionsInt, dateDisplayInt,
 	)
 	if err != nil {
-		slog.Error("updating settings", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "updating settings", err)
 		return
 	}
 

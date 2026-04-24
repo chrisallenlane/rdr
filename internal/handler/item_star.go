@@ -2,7 +2,6 @@ package handler
 
 import (
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/chrisallenlane/rdr/internal/middleware"
@@ -22,15 +21,13 @@ func (s *Server) handleToggleStar(w http.ResponseWriter, r *http.Request) {
 		itemID, user.ID,
 	)
 	if err != nil {
-		slog.Error("toggling star", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "toggling star", err)
 		return
 	}
 
 	affected, err := result.RowsAffected()
 	if err != nil {
-		slog.Error("getting rows affected for star toggle", "error", err)
-		s.renderInternalError(w, r)
+		s.internalError(w, r, "getting rows affected for star toggle", err)
 		return
 	}
 	if affected == 0 {
@@ -41,8 +38,7 @@ func (s *Server) handleToggleStar(w http.ResponseWriter, r *http.Request) {
 	if isHTMXRequest(r) {
 		var starred int
 		if err := s.db.QueryRow("SELECT starred FROM items WHERE id = ?", itemID).Scan(&starred); err != nil {
-			slog.Error("querying star state", "error", err)
-			s.renderInternalError(w, r)
+			s.internalError(w, r, "querying star state", err)
 			return
 		}
 		s.renderFragment(w, "star_button.html", struct {
