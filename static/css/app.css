@@ -393,7 +393,11 @@ td:last-child:has(button, form) {
 
 .items-layout {
     display: grid;
-    grid-template-columns: 14rem 1fr;
+    /* minmax(0, 1fr) instead of 1fr: the default `auto` minimum track size
+       would expand the column to accommodate long unbreakable tokens (URLs,
+       single-word strings) in item descriptions, pushing the whole layout
+       past the viewport on narrow screens. */
+    grid-template-columns: 14rem minmax(0, 1fr);
     gap: 2rem;
 }
 
@@ -518,12 +522,14 @@ section > article a::after {
     font-size: 0.8em;
     line-height: 1.2;
     margin-bottom: 0.5rem;
+    overflow-wrap: anywhere;
 }
 
 .item-description {
     color: var(--fg);
     font-size: 0.9em;
     line-height: 1.4;
+    overflow-wrap: anywhere;
 }
 
 .item-meta a {
@@ -821,13 +827,20 @@ article + nav {
    ========================================================================== */
 
 .sr-only {
+    /* Anchor to the top-left of the containing block. Without an explicit
+       left/top, `position: absolute` on an inline element takes its
+       static-flow position, which inside a long nowrap title sits far past
+       the viewport and inflates the document's scrollWidth. */
     position: absolute;
+    left: 0;
+    top: 0;
     width: 1px;
     height: 1px;
     padding: 0;
     margin: -1px;
     overflow: hidden;
     clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
     white-space: nowrap;
     border: 0;
 }
@@ -924,7 +937,7 @@ article + nav {
 
 @media (max-width: 48rem) {
     .items-layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .items-layout aside {
