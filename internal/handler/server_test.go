@@ -9,6 +9,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/chrisallenlane/rdr/internal/favicon"
 	"github.com/chrisallenlane/rdr/internal/model"
 )
 
@@ -220,16 +221,20 @@ func TestTemplateFuncMap(t *testing.T) {
 	t.Run("faviconSlug with site URL", func(t *testing.T) {
 		faviconSlug := fm["faviconSlug"].(func(model.Item) string)
 		item := model.Item{FeedSiteURL: "https://www.schneier.com", FeedURL: "https://feeds.example.com/rss"}
-		if got := faviconSlug(item); got != "www-schneier-com" {
-			t.Errorf("faviconSlug = %q, want %q", got, "www-schneier-com")
+		got := faviconSlug(item)
+		want := favicon.Slug("https://www.schneier.com", "https://feeds.example.com/rss")
+		if got != want || got == "" {
+			t.Errorf("faviconSlug = %q, want %q (non-empty)", got, want)
 		}
 	})
 
 	t.Run("faviconSlug falls back to feed URL", func(t *testing.T) {
 		faviconSlug := fm["faviconSlug"].(func(model.Item) string)
 		item := model.Item{FeedSiteURL: "", FeedURL: "https://example.com/feed.xml"}
-		if got := faviconSlug(item); got != "example-com" {
-			t.Errorf("faviconSlug = %q, want %q", got, "example-com")
+		got := faviconSlug(item)
+		want := favicon.Slug("", "https://example.com/feed.xml")
+		if got != want || got == "" {
+			t.Errorf("faviconSlug = %q, want %q (non-empty)", got, want)
 		}
 	})
 

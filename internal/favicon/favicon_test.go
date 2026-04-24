@@ -17,107 +17,79 @@ import (
 
 func TestSlug(t *testing.T) {
 	tests := []struct {
-		name    string
-		siteURL string
-		feedURL string
-		want    string
+		name     string
+		siteURL  string
+		feedURL  string
+		wantHost string // expected underlying host; "" if Slug should return ""
 	}{
-		{
-			name:    "simple domain from siteURL",
-			siteURL: "https://www.schneier.com",
-			feedURL: "https://www.schneier.com/feed/atom",
-			want:    "www-schneier-com",
-		},
-		{
-			name:    "siteURL preferred over feedURL",
-			siteURL: "https://example.com",
-			feedURL: "https://feeds.feedburner.com/Example",
-			want:    "example-com",
-		},
-		{
-			name:    "falls back to feedURL when siteURL empty",
-			siteURL: "",
-			feedURL: "https://feeds.feedburner.com/Example",
-			want:    "feeds-feedburner-com",
-		},
-		{
-			name:    "domain with port",
-			siteURL: "https://localhost:8080",
-			feedURL: "",
-			want:    "localhost-8080",
-		},
-		{
-			name:    "both empty returns empty",
-			siteURL: "",
-			feedURL: "",
-			want:    "",
-		},
-		{
-			name:    "invalid URL falls back to feedURL",
-			siteURL: "not a url",
-			feedURL: "https://example.com/feed",
-			want:    "example-com",
-		},
-		{
-			name:    "uppercase domain is lowercased",
-			siteURL: "https://WWW.Example.COM",
-			feedURL: "",
-			want:    "www-example-com",
-		},
-		{
-			name:    "domain with subdomain",
-			siteURL: "https://blog.chris-allen-lane.com",
-			feedURL: "",
-			want:    "blog-chris-allen-lane-com",
-		},
-		{
-			name:    "IP address domain",
-			siteURL: "http://192.168.1.100",
-			feedURL: "",
-			want:    "192-168-1-100",
-		},
-		{
-			name:    "both invalid returns empty",
-			siteURL: "not-a-url",
-			feedURL: "also-not-a-url",
-			want:    "",
-		},
+		{"simple domain from siteURL", "https://www.schneier.com", "https://www.schneier.com/feed/atom", "www.schneier.com"},
+		{"siteURL preferred over feedURL", "https://example.com", "https://feeds.feedburner.com/Example", "example.com"},
+		{"falls back to feedURL when siteURL empty", "", "https://feeds.feedburner.com/Example", "feeds.feedburner.com"},
+		{"domain with port", "https://localhost:8080", "", "localhost:8080"},
+		{"both empty returns empty", "", "", ""},
+		{"invalid URL falls back to feedURL", "not a url", "https://example.com/feed", "example.com"},
+		{"uppercase domain is lowercased", "https://WWW.Example.COM", "", "www.example.com"},
+		{"domain with subdomain", "https://blog.chris-allen-lane.com", "", "blog.chris-allen-lane.com"},
+		{"IP address domain", "http://192.168.1.100", "", "192.168.1.100"},
+		{"both invalid returns empty", "not-a-url", "also-not-a-url", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Slug(tt.siteURL, tt.feedURL)
-			if got != tt.want {
-				t.Errorf("Slug(%q, %q) = %q, want %q", tt.siteURL, tt.feedURL, got, tt.want)
+			want := ""
+			if tt.wantHost != "" {
+				want = hashHost(tt.wantHost)
+			}
+			if got != want {
+				t.Errorf("Slug(%q, %q) = %q, want %q", tt.siteURL, tt.feedURL, got, want)
 			}
 		})
 	}
 }
 
-func TestSlugifyHost(t *testing.T) {
-	tests := []struct {
-		host string
-		want string
-	}{
-		{"www.schneier.com", "www-schneier-com"},
-		{"example.com", "example-com"},
-		{"EXAMPLE.COM", "example-com"},
-		{"localhost:8080", "localhost-8080"},
-		{"192.168.1.1", "192-168-1-1"},
-		{"a", "a"},
-		{"a.b", "a-b"},
-		{".leading.dot.", "leading-dot"},
-		{"---dashes---", "dashes"},
-	}
+func TestHashHost(t *testing.T) {
+	t.Run("deterministic", func(t *testing.T) {
+		a := hashHost("example.com")
+		b := hashHost("example.com")
+		if a != b {
+			t.Errorf("hashHost not deterministic: %q vs %q", a, b)
+		}
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.host, func(t *testing.T) {
-			got := slugifyHost(tt.host)
-			if got != tt.want {
-				t.Errorf("slugifyHost(%q) = %q, want %q", tt.host, got, tt.want)
+	t.Run("case-insensitive", func(t *testing.T) {
+		if hashHost("example.com") != hashHost("EXAMPLE.COM") {
+			t.Errorf("hashHost should be case-insensitive")
+		}
+	})
+
+	t.Run("returns 16 hex chars", func(t *testing.T) {
+		got := hashHost("example.com")
+		if len(got) != 16 {
+			t.Errorf("hashHost(%q) length = %d, want 16", "example.com", len(got))
+		}
+		for _, r := range got {
+			if (r < 'a' || r > 'f') && (r < '0' || r > '9') {
+				t.Errorf("hashHost(%q) = %q contains non-hex char %q", "example.com", got, string(r))
 			}
-		})
-	}
+		}
+	})
+
+	t.Run("distinct hosts produce distinct slugs", func(t *testing.T) {
+		// The old slugifyHost mapped these to the same value (both became
+		// foo-bar-com). The hash-based scheme must separate them.
+		pairs := []struct{ a, b string }{
+			{"foo-bar.com", "foo.bar.com"},
+			{"foo_bar.com", "foo-bar.com"},
+			{"[::1]", "127.0.0.1"},
+			{"a.b.c", "a-b-c"},
+		}
+		for _, p := range pairs {
+			if hashHost(p.a) == hashHost(p.b) {
+				t.Errorf("hashHost(%q) == hashHost(%q): distinct hosts collided", p.a, p.b)
+			}
+		}
+	})
 }
 
 func TestFileExists(t *testing.T) {
@@ -573,14 +545,6 @@ func TestFetch(t *testing.T) {
 	})
 }
 
-func TestSlugifyHost_BoundaryZ(t *testing.T) {
-	// Verify 'z' itself is kept as alphanumeric, not replaced with a hyphen.
-	got := slugifyHost("az")
-	if got != "az" {
-		t.Errorf("slugifyHost(%q) = %q, want %q", "az", got, "az")
-	}
-}
-
 func TestDownload_ExactlyMaxSize(t *testing.T) {
 	// A body of exactly maxSize bytes should succeed (not trigger "too large").
 	body := bytes.Repeat([]byte("x"), maxSize)
@@ -632,24 +596,17 @@ func FuzzSlug(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, siteURL, feedURL string) {
 		result := Slug(siteURL, feedURL)
-		// Result must be empty or contain only [a-z0-9-] with no
-		// leading/trailing hyphens
+		// Result must be empty or 16 hex characters.
 		if result == "" {
 			return
 		}
-		for _, r := range result {
-			if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
-				t.Errorf(
-					"Slug(%q, %q) = %q contains invalid character %q",
-					siteURL, feedURL, result, string(r),
-				)
-			}
+		if len(result) != 16 {
+			t.Errorf("Slug(%q, %q) = %q has length %d, want 16", siteURL, feedURL, result, len(result))
 		}
-		if result[0] == '-' || result[len(result)-1] == '-' {
-			t.Errorf(
-				"Slug(%q, %q) = %q has leading/trailing hyphen",
-				siteURL, feedURL, result,
-			)
+		for _, r := range result {
+			if (r < 'a' || r > 'f') && (r < '0' || r > '9') {
+				t.Errorf("Slug(%q, %q) = %q contains non-hex char %q", siteURL, feedURL, result, string(r))
+			}
 		}
 	})
 }

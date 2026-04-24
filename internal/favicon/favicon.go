@@ -3,7 +3,9 @@ package favicon
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -22,9 +24,11 @@ import (
 const maxSize = 1 << 20 // 1 MB
 
 // Slug returns a filesystem-safe slug derived from the domain of the
-// feed's site URL (preferred) or feed URL (fallback). The slug contains only
-// [a-z0-9-] characters, making it safe for use as a filename and immune to
-// path-traversal attacks by construction.
+// feed's site URL (preferred) or feed URL (fallback). The slug is the first
+// 16 hex characters of SHA-256(lowercase(host)) — collision-resistant,
+// safe for use as a filename, and immune to path-traversal attacks by
+// construction. Two feeds at the same host produce the same slug, which
+// intentionally lets multiple users share a cached favicon file.
 func Slug(siteURL, feedURL string) string {
 	for _, raw := range []string{siteURL, feedURL} {
 		if raw == "" {
@@ -32,24 +36,20 @@ func Slug(siteURL, feedURL string) string {
 		}
 		u, err := url.Parse(raw)
 		if err == nil && u.Host != "" {
-			return slugifyHost(u.Host)
+			return hashHost(u.Host)
 		}
 	}
 	return ""
 }
 
-// slugifyHost replaces every non-alphanumeric character with a hyphen and
-// lowercases the result. Leading/trailing hyphens are trimmed.
-func slugifyHost(host string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(host) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-		} else {
-			b.WriteByte('-')
-		}
-	}
-	return strings.Trim(b.String(), "-")
+// hashHost returns the first 16 hex chars of SHA-256(lowercase(host)).
+// A pure-slugification scheme (lowercase + non-alphanumeric → "-") is
+// ambiguous: foo-bar.com and foo.bar.com would collide to foo-bar-com,
+// letting one user observe or overwrite another user's favicon file for
+// a different-but-colliding domain.
+func hashHost(host string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(host)))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 // Fetch attempts to discover and download a favicon for the given feed.
