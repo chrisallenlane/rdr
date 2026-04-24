@@ -20,8 +20,6 @@ func TestThemeFromRequest(t *testing.T) {
 		{"solarized-dark", "solarized-dark", true, "solarized-dark"},
 		{"modus-light", "modus-light", true, "modus-light"},
 		{"modus-dark", "modus-dark", true, "modus-dark"},
-		{"legacy light maps to solarized-light", "light", true, "solarized-light"},
-		{"legacy dark maps to solarized-dark", "dark", true, "solarized-dark"},
 		{"invalid value defaults to auto", "bogus", true, "auto"},
 		{"empty cookie defaults to auto", "", true, "auto"},
 	}

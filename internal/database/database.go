@@ -40,12 +40,6 @@ func Open(databasePath string) (*sql.DB, error) {
 	// level avoids SQLITE_BUSY when multiple goroutines access the database.
 	db.SetMaxOpenConns(1)
 
-	// Drop the legacy migration-tracking table if it exists (no-op on fresh DBs).
-	if _, err := db.Exec("DROP TABLE IF EXISTS schema_migrations"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("dropping schema_migrations: %w", err)
-	}
-
 	if err := initSchema(db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("initializing schema: %w", err)

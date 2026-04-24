@@ -26,7 +26,6 @@
 - Go toolchain bumped to 1.25.9 (closes 19 reachable `crypto/tls` + `crypto/x509`
   stdlib vulnerabilities)
 - `modernc.org/sqlite` bumped from v1.34.5 to v1.49.1
-- Schema migration system removed; schema applied once from a single flat file
 - Test coverage expanded; flaky wall-clock assertion removed from `TestPollConcurrency`
 
 ## v0.1.0

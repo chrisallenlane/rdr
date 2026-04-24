@@ -13,26 +13,17 @@ var validThemes = map[string]bool{
 	"modus-dark":      true,
 }
 
-// themeFromRequest reads the rdr_theme cookie and returns a valid theme name.
-// Legacy values "light" and "dark" are mapped to their solarized equivalents.
+// themeFromRequest reads the rdr_theme cookie and returns a valid theme name,
+// falling back to "auto" when the cookie is missing or holds an unrecognised
+// value.
 func themeFromRequest(r *http.Request) string {
 	cookie, err := r.Cookie("rdr_theme")
 	if err != nil {
 		return "auto"
 	}
-
-	// Backwards compatibility: map old cookie values.
-	switch cookie.Value {
-	case "light":
-		return "solarized-light"
-	case "dark":
-		return "solarized-dark"
-	}
-
 	if validThemes[cookie.Value] {
 		return cookie.Value
 	}
-
 	return "auto"
 }
 
