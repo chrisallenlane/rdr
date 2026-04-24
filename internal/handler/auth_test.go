@@ -258,6 +258,34 @@ func TestHandleLogin(t *testing.T) {
 			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
 	})
+
+	t.Run("non-existent username runs bcrypt to avoid timing oracle", func(t *testing.T) {
+		// Guards against regression of the username-enumeration timing
+		// channel fix. Bcrypt at DefaultCost (10) costs ~70-100ms; a pure
+		// DB-miss path is sub-millisecond. A 20ms floor cleanly distinguishes
+		// the two without being flaky on slow CI.
+		s := newTestServer(t)
+
+		form := url.Values{
+			"username": {"nobody"},
+			"password": {"testpass1"},
+		}
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/login",
+			strings.NewReader(form.Encode()),
+		)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		start := time.Now()
+		s.ServeHTTP(rec, req)
+		elapsed := time.Since(start)
+
+		if elapsed < 20*time.Millisecond {
+			t.Errorf("non-existent login took %v; expected >= 20ms (decoy bcrypt must run to prevent username enumeration)", elapsed)
+		}
+	})
 }
 
 func TestHandleLogout(t *testing.T) {

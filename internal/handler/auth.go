@@ -113,6 +113,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"SELECT id, password FROM users WHERE username = ?", username,
 	).Scan(&userID, &hash)
 	if err != nil {
+		// Equalize response time against the valid-username path by running
+		// bcrypt against a decoy hash. Prevents username enumeration via a
+		// timing side channel.
+		_ = checkPassword(decoyPasswordHash, password)
 		renderErr()
 		return
 	}
@@ -196,6 +200,17 @@ func hashPassword(password string) (string, error) {
 	}
 	return string(hash), nil
 }
+
+// decoyPasswordHash is a bcrypt hash used to equalize login response time
+// when the submitted username does not exist. Computed once at package
+// initialization so the per-login cost matches the valid-username path.
+var decoyPasswordHash = func() string {
+	h, err := hashPassword("decoy-password-no-user-will-ever-match-this")
+	if err != nil {
+		panic("bcrypt failed on decoy hash: " + err.Error())
+	}
+	return h
+}()
 
 // checkPassword reports whether the given password matches the bcrypt hash.
 func checkPassword(hash, password string) bool {
