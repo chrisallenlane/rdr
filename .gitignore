@@ -5,4 +5,5 @@ bin/
 .env
 .playwright-mcp/
 PROJECT_PROGRESS.md
+LEAD_PROJECT_STATE.md
 coverage.out
