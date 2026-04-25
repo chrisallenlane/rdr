@@ -8,16 +8,29 @@
 docker compose up -d
 ```
 
-Builds the image from the included `Dockerfile` and starts the service on
-port 8080 with a named volume for persistent data. Open
+Pulls `ghcr.io/chrisallenlane/rdr:latest` and starts the service on port
+8080 with a named volume for persistent data. Open
 <http://localhost:8080>, register an account, and add feeds.
 
 ### Docker (manual)
 
 ```bash
-make docker                             # build the image (rdr:latest)
-docker run -p 8080:8080 -v rdr-data:/data rdr
+docker run -p 8080:8080 -v rdr-data:/data ghcr.io/chrisallenlane/rdr:latest
 ```
+
+### Image tags
+
+Images are published to
+[ghcr.io/chrisallenlane/rdr](https://ghcr.io/chrisallenlane/rdr) on every
+push to `master` and on every `v*` tag.
+
+| Tag             | Meaning                                                    |
+| --------------- | ---------------------------------------------------------- |
+| `:latest`       | Latest commit on `master`                                  |
+| `:vX.Y.Z`       | A tagged release (e.g. `:v1.0.0`)                          |
+| `:sha-<short>`  | A specific commit (immutable, useful for pinning rollouts) |
+
+Pin to `:vX.Y.Z` for stable deployments.
 
 ### Binary
 
@@ -26,11 +39,10 @@ make build
 ./bin/rdr
 ```
 
-### Building Tagged Images
+### Building from source
 
 ```bash
-make docker                         # builds rdr:latest
-docker tag rdr rdr:vX.Y.Z           # tag a release
+make docker                         # builds rdr:latest locally
 make docker-multiarch               # builds for amd64 + arm64
 ```
 

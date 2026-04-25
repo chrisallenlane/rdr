@@ -22,6 +22,7 @@ Initial release.
 - Keyboard shortcuts for item navigation (vim-style j/k/h/l)
 - Mobile-friendly responsive design
 - Single binary deployment or Docker (amd64 + arm64)
+- Docker images published to [ghcr.io/chrisallenlane/rdr](https://ghcr.io/chrisallenlane/rdr)
 
 ### Security
 

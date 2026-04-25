@@ -22,14 +22,20 @@ make clean            # Remove build artifacts
 
 Requires Go 1.25+.
 
-## CI Workflow
+## CI Workflows
 
-`.gitea/workflows/build.yaml` is author-specific. The author uses Gitea as
-the primary repository host. On every push, the workflow runs lint + tests
-+ build, then publishes a Docker image to a private Gitea registry tagged
-`:sha-<short>` (always), `:latest` (master only), and `:<tag>` (on `v*`
-tag pushes). GitHub contributors can safely ignore this file — it will not
-run on GitHub and is not required to use or contribute to the project.
+Two parallel CI workflows mirror each other in scope (lint + tests +
+build + publish) but target different registries:
+
+- `.github/workflows/build.yaml` runs on GitHub Actions and publishes to
+  [ghcr.io/chrisallenlane/rdr](https://ghcr.io/chrisallenlane/rdr) (the
+  public image consumed by `docker-compose.yml`).
+- `.gitea/workflows/build.yaml` runs on the author's Gitea instance and
+  publishes to a private Gitea registry. Author-specific; outside
+  contributors can ignore it.
+
+Both publish the same tag scheme: `:sha-<short>` on every build,
+`:latest` on `master`, and `:<tag>` on `v*` tag pushes.
 
 ## Architecture
 

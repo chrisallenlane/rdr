@@ -48,9 +48,10 @@ without an admin approval step.
 docker compose up -d
 ```
 
-This builds the image from the included Dockerfile and starts the service
-on port 8080. Open <http://localhost:8080>, register an account, and add
-feeds.
+Pulls the latest published image from
+[ghcr.io/chrisallenlane/rdr](https://ghcr.io/chrisallenlane/rdr) and
+starts the service on port 8080. Open <http://localhost:8080>, register
+an account, and add feeds.
 
 ### Binary
 
