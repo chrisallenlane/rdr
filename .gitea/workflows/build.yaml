@@ -55,7 +55,11 @@ jobs:
         run: go test -count=1 ./...
 
       - name: go build
-        run: go build ./cmd/rdr
+        # -buildvcs=false matches the GitHub workflow (where uid mismatch
+        # breaks git from the container). Harmless here; keeps the two
+        # workflows identical. The production binary is built inside Docker
+        # and stamps main.version explicitly via -ldflags.
+        run: go build -buildvcs=false ./cmd/rdr
 
   build:
     needs: test

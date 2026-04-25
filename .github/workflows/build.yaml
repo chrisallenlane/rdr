@@ -55,7 +55,11 @@ jobs:
         run: go test -count=1 ./...
 
       - name: go build
-        run: go build ./cmd/rdr
+        # -buildvcs=false: git refuses to read the workspace because of a uid
+        # mismatch between the host runner and the container. The production
+        # binary is built inside Docker (where this isn't an issue) and stamps
+        # main.version explicitly via -ldflags, so VCS info isn't needed here.
+        run: go build -buildvcs=false ./cmd/rdr
 
   build:
     needs: test
