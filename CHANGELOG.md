@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.1.0 - 2026-04-25
 
 ### Features
 
@@ -10,9 +10,9 @@
   audio MIME types render as native `<video>`/`<audio>` players; image-only
   feeds (e.g. YouTube) render a linked thumbnail. The bluemonday sanitizer
   policy is widened to permit `<video>`, `<audio>`, and `<source>` with safe
-  attributes (`controls`, `src`, `preload`, `poster`, `type`, `srcset`);
-  `autoplay`, `loop`, and event handlers remain blocked. `srcset` and `src`
-  on `<source>` are restricted to `https?://` URLs.
+  attributes (`controls`, `src`, `preload`, `poster`, `type`); `autoplay`,
+  `loop`, and event handlers remain blocked. `src` on `<source>` and
+  `poster` on `<video>` are restricted to `https?://` URLs.
 
 ## v1.0.0
 
