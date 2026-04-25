@@ -719,6 +719,21 @@ article img {
     margin: 1rem auto;
 }
 
+article figure {
+    margin: 1.5em 0;
+    text-align: center;
+}
+
+article figure img {
+    margin: 0 auto 0.5em;
+}
+
+article figcaption {
+    font-size: 0.875rem;
+    color: var(--muted);
+    text-align: center;
+}
+
 code, pre { font-family: var(--font-mono); }
 
 pre {
