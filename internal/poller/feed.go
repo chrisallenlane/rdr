@@ -64,14 +64,23 @@ func FetchAndStoreFeed(ctx context.Context, db *sql.DB, feed *model.Feed, favico
 	// Store items.
 	for _, item := range parsed.Items {
 		content := item.Content
+		description := item.Description
 		if content == "" {
-			content = item.Description
+			content = description
+		}
+
+		// When both content and description are empty, attempt to synthesize
+		// HTML from Media RSS extension data (e.g. YouTube, Vimeo, podcasts).
+		if content == "" && description == "" {
+			if syn, desc := synthesizeMediaContent(item); syn != "" {
+				content, description = syn, desc
+			}
 		}
 
 		if _, err := db.Exec(
 			`INSERT OR IGNORE INTO items (feed_id, guid, title, content, description, url, published_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			feed.ID, itemGUID(item), item.Title, content, item.Description, item.Link, itemPublishedAt(item),
+			feed.ID, itemGUID(item), item.Title, content, description, item.Link, itemPublishedAt(item),
 		); err != nil {
 			return fmt.Errorf("storing item for %s: %w", feed.URL, err)
 		}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -234,4 +235,163 @@ func TestFetchAndStoreFeed_ContentFallback(t *testing.T) {
 			t.Errorf("content = %q, want %q", content, "This is the description text")
 		}
 	})
+}
+
+func TestFetchAndStoreFeed_MediaRSS(t *testing.T) {
+	tests := []struct {
+		name         string
+		guid         string
+		feedTitle    string
+		rssFeed      string
+		contentMust  []string
+		contentMustN []string
+		wantDesc     string
+	}{
+		{
+			name:      "YouTube — Flash content uses thumbnail fallback",
+			guid:      "yt-item-1",
+			feedTitle: "YouTube Channel",
+			rssFeed: `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>YouTube Channel</title>
+    <link>https://www.youtube.com/channel/UC1</link>
+    <item>
+      <guid>yt-item-1</guid>
+      <title>Rick Astley - Never Gonna Give You Up</title>
+      <link>https://www.youtube.com/watch?v=dQw4w9WgXcQ</link>
+      <media:group>
+        <media:content url="https://www.youtube.com/v/dQw4w9WgXcQ" type="application/x-shockwave-flash" width="640" height="390"/>
+        <media:thumbnail url="https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg" width="480" height="360"/>
+        <media:description>Never gonna give you up
+
+Rick Astley classic.</media:description>
+        <media:title>Rick Astley - Never Gonna Give You Up</media:title>
+      </media:group>
+    </item>
+  </channel>
+</rss>`,
+			contentMust:  []string{"<a href=", "<img src=", "hqdefault.jpg", "Never gonna give you up"},
+			contentMustN: []string{"<video", "<audio"},
+			wantDesc:     "Never gonna give you up\n\nRick Astley classic.",
+		},
+		{
+			name:      "Podcast — audio enclosure",
+			guid:      "pod-ep1",
+			feedTitle: "My Podcast",
+			rssFeed: `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>My Podcast</title>
+    <link>https://podcast.example.com</link>
+    <item>
+      <guid>pod-ep1</guid>
+      <title>Episode 1</title>
+      <link>https://podcast.example.com/episode/1</link>
+      <enclosure url="https://podcast.example.com/ep1.mp3" type="audio/mpeg" length="1234567"/>
+    </item>
+  </channel>
+</rss>`,
+			contentMust: []string{"<audio", "controls", "ep1.mp3"},
+		},
+		{
+			name:      "Vimeo — video/mp4 media:content",
+			guid:      "vimeo-123456",
+			feedTitle: "Vimeo Channel",
+			rssFeed: `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Vimeo Channel</title>
+    <link>https://vimeo.com/channel/1</link>
+    <item>
+      <guid>vimeo-123456</guid>
+      <title>Short Film</title>
+      <link>https://vimeo.com/123456</link>
+      <media:group>
+        <media:content url="https://vimeo.com/external/123456.mp4" type="video/mp4" width="1280" height="720"/>
+        <media:description>A short film.</media:description>
+      </media:group>
+    </item>
+  </channel>
+</rss>`,
+			contentMust: []string{"<video", "controls", "123456.mp4", "A short film."},
+			wantDesc:    "A short film.",
+		},
+		{
+			name:      "standard fields win over media:group",
+			guid:      "normal-item-1",
+			feedTitle: "Normal Feed",
+			rssFeed: `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Normal Feed</title>
+    <link>https://example.com</link>
+    <item>
+      <guid>normal-item-1</guid>
+      <title>Normal Item</title>
+      <link>https://example.com/normal</link>
+      <description>Standard description text</description>
+      <media:group>
+        <media:thumbnail url="https://example.com/thumb.jpg"/>
+        <media:description>Media description that should be ignored</media:description>
+      </media:group>
+    </item>
+  </channel>
+</rss>`,
+			contentMust:  []string{"Standard description text"},
+			contentMustN: []string{"Media description that should be ignored"},
+			wantDesc:     "Standard description text",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := testutil.OpenTestDB(t)
+			userID := testutil.InsertUser(t, db, "alice")
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/rss+xml")
+				if _, err := fmt.Fprint(w, tt.rssFeed); err != nil {
+					http.Error(w, "write error", http.StatusInternalServerError)
+				}
+			}))
+			defer srv.Close()
+
+			res, err := db.Exec(
+				`INSERT INTO feeds (user_id, url, title) VALUES (?, ?, ?)`,
+				userID, srv.URL, tt.feedTitle,
+			)
+			if err != nil {
+				t.Fatalf("inserting feed: %v", err)
+			}
+			feedID, _ := res.LastInsertId()
+			feed := &model.Feed{ID: feedID, UserID: userID, URL: srv.URL}
+
+			if err := FetchAndStoreFeed(context.Background(), db, feed, ""); err != nil {
+				t.Fatalf("FetchAndStoreFeed: %v", err)
+			}
+
+			var content, description string
+			if err := db.QueryRow(
+				`SELECT content, description FROM items WHERE feed_id = ? AND guid = ?`,
+				feedID, tt.guid,
+			).Scan(&content, &description); err != nil {
+				t.Fatalf("querying item: %v", err)
+			}
+
+			for _, want := range tt.contentMust {
+				if !strings.Contains(content, want) {
+					t.Errorf("content missing %q; got %q", want, content)
+				}
+			}
+			for _, unwanted := range tt.contentMustN {
+				if strings.Contains(content, unwanted) {
+					t.Errorf("content must not contain %q; got %q", unwanted, content)
+				}
+			}
+			if tt.wantDesc != "" && description != tt.wantDesc {
+				t.Errorf("description = %q, want %q", description, tt.wantDesc)
+			}
+		})
+	}
 }

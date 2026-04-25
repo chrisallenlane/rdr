@@ -29,6 +29,7 @@ fuzz:
 	go test ./internal/sanitize/...  -fuzz=FuzzHighlightCodeBlocks -fuzztime=$(FUZZ_TIME)
 	go test ./internal/handler/...   -fuzz=FuzzHandleImportOPML    -fuzztime=$(FUZZ_TIME)
 	go test ./internal/handler/...   -fuzz=FuzzCollectFeedsWithFolder -fuzztime=$(FUZZ_TIME)
+	go test ./internal/poller/...    -fuzz=FuzzSynthesizeMediaContent -fuzztime=$(FUZZ_TIME)
 
 ## Run linters (golangci-lint must be installed separately)
 lint:

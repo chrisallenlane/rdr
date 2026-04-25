@@ -36,19 +36,31 @@ var strictPolicy *bluemonday.Policy
 
 // blockTagRe matches block-level HTML elements.
 var blockTagRe = regexp.MustCompile(
-	`(?i)<(p|div|h[1-6]|blockquote|ul|ol|table|pre)[\s>]`,
+	`(?i)<(p|div|h[1-6]|blockquote|ul|ol|table|pre|figure|video|audio)[\s>]`,
 )
 
 func init() {
 	sanitizePolicy = bluemonday.UGCPolicy()
 	sanitizePolicy.AllowElements("figure", "figcaption", "picture", "source")
-	sanitizePolicy.AllowAttrs("srcset", "sizes", "media").OnElements("source")
+	sanitizePolicy.AllowAttrs("sizes", "media").OnElements("source")
 	sanitizePolicy.AllowAttrs("loading").OnElements("img")
 	// Allow language class on <code> for syntax highlighting detection.
 	sanitizePolicy.AllowAttrs("class").
 		Matching(regexp.MustCompile(`^language-[\w+-]+$`)).
 		OnElements("code")
 	// UGCPolicy() strips inline styles by default — do NOT call AllowStyles()
+
+	// Allow HTML5 media elements synthesized from Media RSS feeds.
+	// autoplay, loop, and event handlers are intentionally NOT allow-listed.
+	sanitizePolicy.AllowElements("video", "audio")
+	sanitizePolicy.AllowAttrs("controls", "src", "preload").OnElements("video", "audio")
+	sanitizePolicy.AllowAttrs("poster").
+		Matching(regexp.MustCompile(`(?i)^https?://`)).
+		OnElements("video")
+	sanitizePolicy.AllowAttrs("type").OnElements("source")
+	sanitizePolicy.AllowAttrs("src").
+		Matching(regexp.MustCompile(`(?i)^https?://`)).
+		OnElements("source")
 
 	strictPolicy = bluemonday.StrictPolicy()
 }

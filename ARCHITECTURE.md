@@ -75,9 +75,12 @@ button). For each feed the poll cycle:
 
 1. Fetches the RSS/Atom XML via HTTP
 2. Parses it with `gofeed`
-3. Upserts items into the database (`INSERT OR IGNORE` by GUID)
-4. Updates feed metadata (title, site URL, last-fetched timestamp)
-5. Downloads a favicon via `favicon.Fetch` (best-effort, errors logged)
+3. Calls `synthesizeMediaContent` (`internal/poller/media.go`) to build HTML
+   from Media RSS / Yahoo Media extension data when `Content` and `Description`
+   are both empty (handles YouTube, Vimeo, podcast feeds)
+4. Upserts items into the database (`INSERT OR IGNORE` by GUID)
+5. Updates feed metadata (title, site URL, last-fetched timestamp)
+6. Downloads a favicon via `favicon.Fetch` (best-effort, errors logged)
 
 After each poll cycle, `PruneOldItems` deletes read items older than the
 configured retention period (if set).
@@ -88,7 +91,12 @@ When an item is viewed, its content passes through three sanitization steps:
 
 1. `sanitize.ResolveRelativeURLs` -- rewrites relative `src`/`href`
    attributes to absolute URLs using the feed's base URL
-2. `sanitize.HTML` -- strips dangerous tags/attributes via bluemonday
+2. `sanitize.HTML` -- strips dangerous tags/attributes via bluemonday.
+   In addition to the standard UGC policy, `<video>`, `<audio>`, and
+   `<source>` are permitted with a restricted safe-attribute set (`controls`,
+   `src`, `preload`, `poster`, `type`, `srcset`). `autoplay`, `loop`, and
+   event handlers are blocked. `src`/`srcset` on `<source>` and `poster` on
+   `<video>` are restricted to `https?://` URLs.
 3. `sanitize.HighlightCodeBlocks` -- applies Chroma syntax highlighting
    to `<pre><code>` blocks
 

@@ -18,7 +18,7 @@ shortcuts as a progressive enhancement — everything works without it.
 
 ## Features
 
-- RSS and Atom feed support
+- RSS, Atom, and Media RSS feed support (YouTube, Vimeo, and podcast feeds render with thumbnails and media players)
 - Full-text search across all items (SQLite FTS5)
 - Feed organization with lists (a feed belongs to one list)
 - OPML import and export (lists exported as folders)

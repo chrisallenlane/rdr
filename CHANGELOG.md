@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- Media RSS / Yahoo Media extension support: feeds with empty content (YouTube,
+  Vimeo, podcast feeds) now synthesize an HTML article from `<media:group>`,
+  `<media:content>`, `<media:thumbnail>`, and `<enclosure>` data. Video and
+  audio MIME types render as native `<video>`/`<audio>` players; image-only
+  feeds (e.g. YouTube) render a linked thumbnail. The bluemonday sanitizer
+  policy is widened to permit `<video>`, `<audio>`, and `<source>` with safe
+  attributes (`controls`, `src`, `preload`, `poster`, `type`, `srcset`);
+  `autoplay`, `loop`, and event handlers remain blocked. `srcset` and `src`
+  on `<source>` are restricted to `https?://` URLs.
+
 ## v1.0.0
 
 Initial release.
