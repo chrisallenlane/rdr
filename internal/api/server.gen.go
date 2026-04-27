@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/oapi-codegen/runtime"
 )
 
 const (
@@ -39,6 +41,40 @@ type HealthStatus struct {
 
 // HealthStatusStatus Always "ok". Reserved for future expansion.
 type HealthStatusStatus string
+
+// Item defines model for Item.
+type Item struct {
+	// Content Full sanitized HTML body. Omitted from list responses.
+	Content *string `json:"content,omitempty"`
+
+	// Description Short summary or excerpt (sanitized).
+	Description *string    `json:"description,omitempty"`
+	FeedId      int64      `json:"feed_id"`
+	FeedSiteUrl *string    `json:"feed_site_url,omitempty"`
+	FeedTitle   string     `json:"feed_title"`
+	FeedUrl     *string    `json:"feed_url,omitempty"`
+	Id          int64      `json:"id"`
+	PublishedAt *time.Time `json:"published_at,omitempty"`
+	Read        bool       `json:"read"`
+	Starred     bool       `json:"starred"`
+	Title       string     `json:"title"`
+	Url         string     `json:"url"`
+}
+
+// MarkReadRequest defines model for MarkReadRequest.
+type MarkReadRequest struct {
+	// FeedId Restrict the mark-read to items in this feed.
+	FeedId *int64 `json:"feed_id,omitempty"`
+
+	// ListId Restrict the mark-read to items in feeds belonging to this list.
+	ListId *int64 `json:"list_id,omitempty"`
+}
+
+// MarkReadResponse defines model for MarkReadResponse.
+type MarkReadResponse struct {
+	// Marked Number of items that transitioned from unread to read.
+	Marked int `json:"marked"`
+}
 
 // Problem RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
 type Problem struct {
@@ -71,20 +107,65 @@ type User struct {
 	Username string `json:"username"`
 }
 
+// IDPath defines model for IDPath.
+type IDPath = int64
+
+// PageParam defines model for PageParam.
+type PageParam = int
+
 // BadRequest RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
 type BadRequest = Problem
 
 // InternalServerError RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
 type InternalServerError = Problem
 
+// NotFound RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
+type NotFound = Problem
+
 // Unauthorized RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
 type Unauthorized = Problem
+
+// ListItemsParams defines parameters for ListItems.
+type ListItemsParams struct {
+	// Page 1-based page index. Page size is 50.
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
+
+	// FeedId Restrict to a single feed (must belong to the caller).
+	FeedId *int64 `form:"feed_id,omitempty" json:"feed_id,omitempty"`
+
+	// ListId Restrict to feeds in a specific list.
+	ListId *int64 `form:"list_id,omitempty" json:"list_id,omitempty"`
+
+	// Unread If true, only return unread items.
+	Unread *bool `form:"unread,omitempty" json:"unread,omitempty"`
+
+	// Starred If true, only return starred items.
+	Starred *bool `form:"starred,omitempty" json:"starred,omitempty"`
+}
+
+// MarkItemsReadJSONRequestBody defines body for MarkItemsRead for application/json ContentType.
+type MarkItemsReadJSONRequestBody = MarkReadRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Liveness probe
 	// (GET /api/v1/healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
+	// List items
+	// (GET /api/v1/items)
+	ListItems(w http.ResponseWriter, r *http.Request, params ListItemsParams)
+	// Mark items as read in bulk
+	// (POST /api/v1/items/mark-read)
+	MarkItemsRead(w http.ResponseWriter, r *http.Request)
+	// Get an item
+	// (GET /api/v1/items/{id})
+	GetItem(w http.ResponseWriter, r *http.Request, id IDPath)
+	// Remove a star from an item
+	// (DELETE /api/v1/items/{id}/star)
+	UnstarItem(w http.ResponseWriter, r *http.Request, id IDPath)
+	// Star an item
+	// (PUT /api/v1/items/{id}/star)
+	StarItem(w http.ResponseWriter, r *http.Request, id IDPath)
 	// Identify the authenticated user
 	// (GET /api/v1/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -104,6 +185,184 @@ func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealthz(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListItems operation middleware
+func (siw *ServerInterfaceWrapper) ListItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListItemsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "feed_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "feed_id", r.URL.Query(), &params.FeedId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "feed_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "list_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "list_id", r.URL.Query(), &params.ListId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "list_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "unread" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unread", r.URL.Query(), &params.Unread, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unread", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "starred" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "starred", r.URL.Query(), &params.Starred, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "starred", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListItems(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkItemsRead operation middleware
+func (siw *ServerInterfaceWrapper) MarkItemsRead(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkItemsRead(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetItem operation middleware
+func (siw *ServerInterfaceWrapper) GetItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IDPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetItem(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnstarItem operation middleware
+func (siw *ServerInterfaceWrapper) UnstarItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IDPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnstarItem(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StarItem operation middleware
+func (siw *ServerInterfaceWrapper) StarItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IDPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StarItem(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -254,6 +513,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/healthz", wrapper.GetHealthz)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/items", wrapper.ListItems)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/items/mark-read", wrapper.MarkItemsRead)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/items/{id}", wrapper.GetItem)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/v1/items/{id}/star", wrapper.UnstarItem)
+	m.HandleFunc("PUT "+options.BaseURL+"/api/v1/items/{id}/star", wrapper.StarItem)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
 
 	return m
