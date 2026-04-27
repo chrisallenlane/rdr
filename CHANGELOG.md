@@ -1,5 +1,42 @@
 # Changelog
 
+## v1.2.0 - unreleased
+
+### Features
+
+- **JSON API.** All HTML resources (items, feeds, lists, search) are
+  now also exposed as a v1 JSON API under `/api/v1/`. Spec-first
+  OpenAPI 3.0.3 at `internal/api/openapi.yaml`, served by the running
+  binary at `/api/openapi.{yaml,json}`. Errors follow RFC 7807 Problem
+  Details; paginated lists use RFC 5988 `Link` headers plus
+  `X-Total-Count`. Search returns structured `{text, highlight}`
+  snippet segments rather than embedded sentinels. See
+  [API.md](API.md) for endpoint reference and curl examples.
+- **API tokens.** Mint personal access tokens (`rdr_pat_<64 hex>`)
+  from **Settings → API Tokens**, name them, optionally expire them,
+  and revoke them. The full token is shown once at creation and only a
+  SHA-256 hash is stored. The token grants the same authority as the
+  user who minted it (no granular scopes; threat model is homelab /
+  trusted-network).
+- **Goose-driven migrations.** Schema is now applied by
+  [pressly/goose](https://github.com/pressly/goose) on every startup,
+  reading numbered SQL files from `internal/database/migrations/`.
+  Migrations are up-only — rollback is by restoring from backup.
+  Migration `001_initial.sql` uses `IF NOT EXISTS` everywhere so it
+  boots cleanly against either a fresh DB or an existing v1.1.0
+  install. New tables go in their own numbered file; goose stamps
+  `goose_db_version` after each successful run.
+
+### Internal
+
+- `oapi-codegen` is wired in as a Go tool dependency
+  (`go tool oapi-codegen -config gen.yaml openapi.yaml`); CI fails if
+  `go generate ./...` produces a diff. Spectral lints the spec on
+  every push.
+- The api handler is mounted from `internal/handler/routes.go` via
+  `api.New(api.Config{...})`. Test fixtures pass through stub feed
+  resolvers so the suite never hits the network.
+
 ## v1.1.0 - 2026-04-25
 
 ### Features

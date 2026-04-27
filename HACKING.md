@@ -37,6 +37,35 @@ build + publish) but target different registries:
 Both publish the same tag scheme: `:sha-<short>` on every build,
 `:latest` on `master`, and `:<tag>` on `v*` tag pushes.
 
+## Adding a JSON API endpoint
+
+The API is spec-first. The hand-authored OpenAPI document at
+`internal/api/openapi.yaml` is the source of truth; `server.gen.go` is
+generated and committed.
+
+1. **Edit the spec.** Add the path, parameters, request body, and
+   responses to `internal/api/openapi.yaml`. Reuse the existing
+   `Problem`, `BadRequest`, `Unauthorized`, `NotFound`, `Conflict`, and
+   `UnprocessableEntity` components. New schemas go under
+   `components.schemas`.
+2. **Lint the spec.** `make lint-spec`.
+3. **Regenerate.** `make generate` — this updates `server.gen.go` with
+   the new method on `ServerInterface` and the new types. Don't
+   hand-edit the generated file.
+4. **Implement.** Add the new method to `*api.Server` in the resource
+   file that matches its tag (`feeds.go`, `lists.go`, etc.). Read the
+   user id with `userIDFromContext(r.Context())`, scope every query by
+   `user_id`, and emit errors via `writeProblem(...)`.
+5. **Test.** Add tests alongside `*_test.go`. The standard fixture seeds
+   two users so you can assert IDOR (alice can't reach bob's resource);
+   `authedRequest(method, target, tok, body)` is the shorthand.
+6. **Quality bar.** `make fmt && make vet && make lint && make
+   lint-spec && make test` should all pass; `go generate ./...` must
+   produce no diff.
+7. **Document client behavior.** If the new endpoint changes the
+   client-facing API surface, update [API.md](API.md) — the spec
+   covers the wire-level contract but the quickstart prose lives there.
+
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed overview of the
