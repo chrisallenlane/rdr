@@ -15,6 +15,10 @@ type Server struct {
 // OpenAPI spec endpoints (/api/openapi.{yaml,json}). The returned
 // handler is intended to be mounted under "/" of an outer mux; route
 // patterns include the full /api/... prefix matching the spec.
+//
+// Authentication is wired here: every request through the returned
+// handler passes through bearerAuth, which exempts a fixed set of
+// public paths (healthz, openapi.yaml, openapi.json).
 func New(db *sql.DB) http.Handler {
 	srv := &Server{db: db}
 
@@ -27,5 +31,5 @@ func New(db *sql.DB) http.Handler {
 	mux.HandleFunc("GET /api/openapi.yaml", serveSpecYAML)
 	mux.HandleFunc("GET /api/openapi.json", serveSpecJSON)
 
-	return mux
+	return bearerAuth(db, mux)
 }
