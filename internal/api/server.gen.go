@@ -33,6 +33,51 @@ func (e HealthStatusStatus) Valid() bool {
 	}
 }
 
+// AddFeedRequest defines model for AddFeedRequest.
+type AddFeedRequest struct {
+	// Url URL to add. May be a feed URL or a website URL — in the
+	// latter case the server attempts auto-discovery of the
+	// feed link from `<link rel="alternate">` tags.
+	Url string `json:"url"`
+}
+
+// Feed defines model for Feed.
+type Feed struct {
+	// ConsecutiveFailures Number of consecutive fetch failures since the last success.
+	// A non-zero value indicates the feed is currently broken.
+	ConsecutiveFailures *int      `json:"consecutive_failures,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+
+	// FaviconUrl Favicon URL discovered for the feed (if known).
+	FaviconUrl *string `json:"favicon_url,omitempty"`
+	Id         int64   `json:"id"`
+
+	// ItemCount Total number of items stored for this feed.
+	ItemCount int `json:"item_count"`
+
+	// LastFetchError Most recent fetch error, if any.
+	LastFetchError *string `json:"last_fetch_error,omitempty"`
+
+	// LastFetchedAt When the feed was last successfully fetched.
+	LastFetchedAt *time.Time `json:"last_fetched_at,omitempty"`
+
+	// ListId List this feed belongs to (if any).
+	ListId *int64 `json:"list_id,omitempty"`
+
+	// SiteUrl Canonical website for the feed (if known).
+	SiteUrl *string `json:"site_url,omitempty"`
+
+	// Title Feed title. May be empty until the first successful fetch
+	// populates it.
+	Title string `json:"title"`
+
+	// UnreadCount Unread items in this feed for the caller.
+	UnreadCount int `json:"unread_count"`
+
+	// Url Feed (RSS/Atom) URL.
+	Url string `json:"url"`
+}
+
 // HealthStatus defines model for HealthStatus.
 type HealthStatus struct {
 	// Status Always "ok". Reserved for future expansion.
@@ -95,6 +140,12 @@ type Problem struct {
 	Type string `json:"type"`
 }
 
+// SyncStatus defines model for SyncStatus.
+type SyncStatus struct {
+	// Syncing True if a feed sync is currently in progress.
+	Syncing bool `json:"syncing"`
+}
+
 // User defines model for User.
 type User struct {
 	// CreatedAt When the user account was created.
@@ -116,6 +167,9 @@ type PageParam = int
 // BadRequest RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
 type BadRequest = Problem
 
+// Conflict RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
+type Conflict = Problem
+
 // InternalServerError RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
 type InternalServerError = Problem
 
@@ -124,6 +178,9 @@ type NotFound = Problem
 
 // Unauthorized RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
 type Unauthorized = Problem
+
+// UnprocessableEntity RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
+type UnprocessableEntity = Problem
 
 // ListItemsParams defines parameters for ListItems.
 type ListItemsParams struct {
@@ -143,11 +200,32 @@ type ListItemsParams struct {
 	Starred *bool `form:"starred,omitempty" json:"starred,omitempty"`
 }
 
+// AddFeedJSONRequestBody defines body for AddFeed for application/json ContentType.
+type AddFeedJSONRequestBody = AddFeedRequest
+
 // MarkItemsReadJSONRequestBody defines body for MarkItemsRead for application/json ContentType.
 type MarkItemsReadJSONRequestBody = MarkReadRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List feeds
+	// (GET /api/v1/feeds)
+	ListFeeds(w http.ResponseWriter, r *http.Request)
+	// Add a feed
+	// (POST /api/v1/feeds)
+	AddFeed(w http.ResponseWriter, r *http.Request)
+	// Trigger a feed sync
+	// (POST /api/v1/feeds/sync)
+	SyncFeeds(w http.ResponseWriter, r *http.Request)
+	// Get sync status
+	// (GET /api/v1/feeds/sync/status)
+	GetSyncStatus(w http.ResponseWriter, r *http.Request)
+	// Delete a feed
+	// (DELETE /api/v1/feeds/{id})
+	DeleteFeed(w http.ResponseWriter, r *http.Request, id IDPath)
+	// Get a feed
+	// (GET /api/v1/feeds/{id})
+	GetFeed(w http.ResponseWriter, r *http.Request, id IDPath)
 	// Liveness probe
 	// (GET /api/v1/healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
@@ -179,6 +257,148 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListFeeds operation middleware
+func (siw *ServerInterfaceWrapper) ListFeeds(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFeeds(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddFeed operation middleware
+func (siw *ServerInterfaceWrapper) AddFeed(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddFeed(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SyncFeeds operation middleware
+func (siw *ServerInterfaceWrapper) SyncFeeds(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SyncFeeds(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSyncStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetSyncStatus(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSyncStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFeed operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFeed(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IDPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFeed(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFeed operation middleware
+func (siw *ServerInterfaceWrapper) GetFeed(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IDPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFeed(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetHealthz operation middleware
 func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Request) {
@@ -512,6 +732,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/feeds", wrapper.ListFeeds)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/feeds", wrapper.AddFeed)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/feeds/sync", wrapper.SyncFeeds)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/feeds/sync/status", wrapper.GetSyncStatus)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/v1/feeds/{id}", wrapper.DeleteFeed)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/feeds/{id}", wrapper.GetFeed)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/healthz", wrapper.GetHealthz)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/items", wrapper.ListItems)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/items/mark-read", wrapper.MarkItemsRead)

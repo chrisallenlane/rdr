@@ -102,7 +102,7 @@ func authedRequest(method, target, tok string, body string) *http.Request {
 
 func TestListItems_ScopedByUser(t *testing.T) {
 	db, aliceTok, _, _, _ := itemFixture(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodGet, "/api/v1/items", aliceTok, ""))
@@ -130,7 +130,7 @@ func TestListItems_ScopedByUser(t *testing.T) {
 
 func TestListItems_FilterUnread(t *testing.T) {
 	db, aliceTok, _, _, _ := itemFixture(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodGet, "/api/v1/items?unread=true", aliceTok, ""))
@@ -149,7 +149,7 @@ func TestListItems_FilterUnread(t *testing.T) {
 
 func TestListItems_FilterStarred(t *testing.T) {
 	db, aliceTok, _, _, _ := itemFixture(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodGet, "/api/v1/items?starred=true", aliceTok, ""))
@@ -163,7 +163,7 @@ func TestListItems_FilterStarred(t *testing.T) {
 
 func TestGetItem_OwnedReturnsFullContent(t *testing.T) {
 	db, aliceTok, _, _, aliceItem := itemFixture(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodGet, urlf("/api/v1/items/%d", aliceItem), aliceTok, ""))
@@ -182,7 +182,7 @@ func TestGetItem_OwnedReturnsFullContent(t *testing.T) {
 
 func TestGetItem_CrossUserReturns404(t *testing.T) {
 	db, _, bobTok, _, aliceItem := itemFixture(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodGet, urlf("/api/v1/items/%d", aliceItem), bobTok, ""))
@@ -194,7 +194,7 @@ func TestGetItem_CrossUserReturns404(t *testing.T) {
 
 func TestStarUnstarItem(t *testing.T) {
 	db, aliceTok, _, _, aliceItem := itemFixture(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodDelete, urlf("/api/v1/items/%d/star", aliceItem), aliceTok, ""))
@@ -220,7 +220,7 @@ func TestStarUnstarItem(t *testing.T) {
 
 func TestStarItem_CrossUserReturns404(t *testing.T) {
 	db, _, bobTok, _, aliceItem := itemFixture(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodPut, urlf("/api/v1/items/%d/star", aliceItem), bobTok, ""))
@@ -238,7 +238,7 @@ func TestStarItem_CrossUserReturns404(t *testing.T) {
 
 func TestMarkRead_All(t *testing.T) {
 	db, aliceTok, _, _, _ := itemFixture(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/v1/items/mark-read", aliceTok, "{}"))
@@ -255,7 +255,7 @@ func TestMarkRead_All(t *testing.T) {
 
 func TestMarkRead_FilterByFeed(t *testing.T) {
 	db, aliceTok, _, aliceFeed, _ := itemFixture(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	body := `{"feed_id": 999999}` // wrong feed id; should mark 0
 	rec := httptest.NewRecorder()
@@ -278,7 +278,7 @@ func TestMarkRead_FilterByFeed(t *testing.T) {
 
 func TestMarkRead_RejectsBothFilters(t *testing.T) {
 	db, aliceTok, _, _, _ := itemFixture(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/v1/items/mark-read", aliceTok,

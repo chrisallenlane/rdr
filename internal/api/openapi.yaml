@@ -18,6 +18,8 @@ servers:
     description: Same-origin
 
 tags:
+  - name: feeds
+    description: Feed subscriptions (sources).
   - name: identity
     description: Caller-identity endpoints.
   - name: items
@@ -62,6 +64,125 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/feeds:
+    get:
+      operationId: listFeeds
+      summary: List feeds
+      description: |
+        Returns every feed belonging to the authenticated user, ordered
+        by title. Pagination is not currently applied — single-user feed
+        counts are tractable.
+      tags: [feeds]
+      responses:
+        "200":
+          description: Feeds.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Feed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: addFeed
+      summary: Add a feed
+      description: |
+        Adds a feed by URL. The URL may point directly to a feed or to
+        an HTML page; in the latter case the server attempts auto-discovery
+        of the feed link. Returns 201 with the newly-created feed as
+        soon as the row is inserted; the initial fetch happens in the
+        background and may not have populated `title` / `site_url` yet
+        when the response is sent.
+      tags: [feeds]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddFeedRequest"
+      responses:
+        "201":
+          description: Feed created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feed"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/v1/feeds/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IDPath"
+    get:
+      operationId: getFeed
+      summary: Get a feed
+      description: |
+        Returns a single feed with computed item and unread counts.
+        404 if the feed does not exist or does not belong to the caller.
+      tags: [feeds]
+      responses:
+        "200":
+          description: The feed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteFeed
+      summary: Delete a feed
+      description: |
+        Removes a feed and cascade-deletes its items.
+      tags: [feeds]
+      responses:
+        "204":
+          description: Feed removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/feeds/sync:
+    post:
+      operationId: syncFeeds
+      summary: Trigger a feed sync
+      description: |
+        Asks the background poller to run a sync immediately. Returns
+        202 whether or not a sync was actually started (a sync that is
+        already in progress is left running rather than queued).
+      tags: [feeds]
+      responses:
+        "202":
+          description: Sync trigger accepted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/feeds/sync/status:
+    get:
+      operationId: getSyncStatus
+      summary: Get sync status
+      description: Returns whether a feed sync is currently in progress.
+      tags: [feeds]
+      responses:
+        "200":
+          description: Sync status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncStatus"
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -228,6 +349,90 @@ components:
           format: date-time
           description: When the user account was created.
 
+    Feed:
+      type: object
+      required:
+        - id
+        - url
+        - title
+        - created_at
+        - item_count
+        - unread_count
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        list_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: List this feed belongs to (if any).
+        url:
+          type: string
+          format: uri
+          description: Feed (RSS/Atom) URL.
+        title:
+          type: string
+          description: |
+            Feed title. May be empty until the first successful fetch
+            populates it.
+        site_url:
+          type: string
+          format: uri
+          description: Canonical website for the feed (if known).
+        favicon_url:
+          type: string
+          format: uri
+          description: Favicon URL discovered for the feed (if known).
+        last_fetched_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the feed was last successfully fetched.
+        last_fetch_error:
+          type: string
+          description: Most recent fetch error, if any.
+        consecutive_failures:
+          type: integer
+          minimum: 0
+          description: |
+            Number of consecutive fetch failures since the last success.
+            A non-zero value indicates the feed is currently broken.
+        created_at:
+          type: string
+          format: date-time
+        item_count:
+          type: integer
+          minimum: 0
+          description: Total number of items stored for this feed.
+        unread_count:
+          type: integer
+          minimum: 0
+          description: Unread items in this feed for the caller.
+
+    AddFeedRequest:
+      type: object
+      required: [url]
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+          format: uri
+          description: |
+            URL to add. May be a feed URL or a website URL — in the
+            latter case the server attempts auto-discovery of the
+            feed link from `<link rel="alternate">` tags.
+
+    SyncStatus:
+      type: object
+      required: [syncing]
+      additionalProperties: false
+      properties:
+        syncing:
+          type: boolean
+          description: True if a feed sync is currently in progress.
+
     Item:
       type: object
       required:
@@ -353,6 +558,24 @@ components:
         The requested resource does not exist or does not belong to the
         caller. The same status is returned for both so callers cannot
         enumerate ids belonging to other users.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: |
+        The request conflicts with current state — for example, an
+        attempt to add a feed URL that the caller has already
+        subscribed to.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    UnprocessableEntity:
+      description: |
+        The request body is well-formed JSON but is semantically
+        invalid — for example, the supplied URL could not be reached
+        or did not contain a discoverable feed.
       content:
         application/problem+json:
           schema:

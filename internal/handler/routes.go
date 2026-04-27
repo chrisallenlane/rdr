@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"io/fs"
 	"net/http"
 
@@ -12,8 +13,26 @@ import (
 func (s *Server) routes() {
 	// JSON API (mounts /api/v1/* and /api/openapi.{yaml,json}). The api
 	// package owns its own routing internally; the outer mux delegates
-	// anything under /api/ to it.
-	s.mux.Handle("/api/", api.New(s.db))
+	// anything under /api/ to it. Sync hooks are read at request time
+	// via closures so the api server picks up SetSyncFunc / SetSyncStatusFunc
+	// calls that happen after NewServer returns.
+	s.mux.Handle("/api/", api.New(api.Config{
+		DB:           s.db,
+		FaviconsDir:  s.faviconsDir,
+		FeedResolver: s.feedResolver,
+		SyncFeeds: func(ctx context.Context) bool {
+			if s.syncFeeds == nil {
+				return false
+			}
+			return s.syncFeeds(ctx)
+		},
+		SyncStatus: func() bool {
+			if s.syncStatus == nil {
+				return false
+			}
+			return s.syncStatus()
+		},
+	}))
 
 	// Static files
 	staticFS, _ := fs.Sub(s.staticFS, "static")

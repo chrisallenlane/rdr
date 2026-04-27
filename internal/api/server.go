@@ -1,14 +1,46 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
+
+	"github.com/chrisallenlane/rdr/internal/discover"
 )
+
+// Config bundles the dependencies the API needs from the host process.
+// All fields except DB may be left zero-valued in tests; New supplies
+// safe defaults.
+type Config struct {
+	// DB is the live SQLite connection. Required.
+	DB *sql.DB
+
+	// FaviconsDir is the on-disk directory where downloaded favicons
+	// are cached. Empty disables favicon download on feed creation.
+	FaviconsDir string
+
+	// FeedResolver maps a user-supplied URL to a feed URL via
+	// auto-discovery. Defaults to discover.ResolveFeedURL.
+	FeedResolver func(ctx context.Context, rawURL string) (string, error)
+
+	// SyncFeeds triggers an account-wide feed sync. Returns true if a
+	// sync was started, false if one was already in progress. Nil
+	// causes /feeds/sync to behave as a no-op.
+	SyncFeeds func(ctx context.Context) bool
+
+	// SyncStatus reports whether a sync is currently in progress. Nil
+	// causes /feeds/sync/status to report syncing=false.
+	SyncStatus func() bool
+}
 
 // Server implements ServerInterface for the rdr v1 JSON API. It is the
 // hand-written counterpart to the generated server.gen.go.
 type Server struct {
-	db *sql.DB
+	db           *sql.DB
+	faviconsDir  string
+	feedResolver func(ctx context.Context, rawURL string) (string, error)
+	syncFeeds    func(ctx context.Context) bool
+	syncStatus   func() bool
 }
 
 // New constructs an API handler that mounts the v1 JSON API and the
@@ -19,8 +51,19 @@ type Server struct {
 // Authentication is wired here: every request through the returned
 // handler passes through bearerAuth, which exempts a fixed set of
 // public paths (healthz, openapi.yaml, openapi.json).
-func New(db *sql.DB) http.Handler {
-	srv := &Server{db: db}
+func New(cfg Config) http.Handler {
+	resolver := cfg.FeedResolver
+	if resolver == nil {
+		resolver = discover.ResolveFeedURL
+	}
+
+	srv := &Server{
+		db:           cfg.DB,
+		faviconsDir:  cfg.FaviconsDir,
+		feedResolver: resolver,
+		syncFeeds:    cfg.SyncFeeds,
+		syncStatus:   cfg.SyncStatus,
+	}
 
 	mux := http.NewServeMux()
 
@@ -31,5 +74,5 @@ func New(db *sql.DB) http.Handler {
 	mux.HandleFunc("GET /api/openapi.yaml", serveSpecYAML)
 	mux.HandleFunc("GET /api/openapi.json", serveSpecJSON)
 
-	return bearerAuth(db, mux)
+	return bearerAuth(cfg.DB, mux)
 }
