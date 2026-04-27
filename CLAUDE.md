@@ -24,9 +24,13 @@ make lint-spec      # Spectral lint of the OpenAPI document
 
 ## Key Conventions
 
-- **Minimal JavaScript.** All UI is server-rendered HTML with standard forms.
-  `static/js/app.js` adds keyboard shortcuts only; no JS is required for
-  any functionality.
+- **Minimal JavaScript.** All core UI is server-rendered HTML with standard
+  forms. Three small client scripts run as progressive enhancement: `app.js`
+  for vim-style keyboard shortcuts, `sidebar-init.js` to restore the
+  sidebar's expand/collapse state from `localStorage` before first paint,
+  and `htmx.min.js` for swap-without-reload on a handful of forms (feeds,
+  lists, search, mark-read, settings, theme). All functionality works with
+  JavaScript disabled.
 - **No ORM.** Handlers query SQLite directly via `database/sql`.
 - **Templates use `go:embed`.** Static files and templates are embedded at
   compile time. The `embed.go` file in the project root defines the two
@@ -56,7 +60,8 @@ make lint-spec      # Spectral lint of the OpenAPI document
 - Request helpers live in `handler/request_helpers.go`: `parseTime`,
   `paginate`, `pageFromQuery`, `pathInt64`, `parsePositiveInt64`,
   `refererPath`, etc.
-- `buildItemFilter` and `itemsHeading` live in `handler/items.go`.
+- `BuildItemFilter` lives in `internal/dbutil/` and is shared between the
+  HTML and JSON routes. `itemsHeading` lives in `handler/items.go`.
 
 ## JSON API
 

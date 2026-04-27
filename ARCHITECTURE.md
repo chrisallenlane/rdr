@@ -43,11 +43,14 @@ templates/
 **Single binary.** Templates and static assets are embedded via `go:embed`.
 The only runtime dependency is the SQLite database file.
 
-**Minimal JavaScript.** The entire UI is server-rendered HTML. Theme
-selection, form submission, and navigation are all standard HTTP. A small
-`static/js/app.js` adds keyboard shortcuts as a progressive enhancement —
-everything works without it. This keeps the frontend trivially auditable
-and accessible.
+**Minimal JavaScript.** The core UI is server-rendered HTML. Three small
+client scripts run as progressive enhancement: `app.js` for vim-style
+keyboard shortcuts, `sidebar-init.js` to restore the sidebar's
+expand/collapse state from `localStorage` before first paint, and
+`htmx.min.js` for swap-without-reload on a few forms (feeds, lists,
+search, mark-read, settings, theme). All functionality works with
+JavaScript disabled. This keeps the frontend trivially auditable and
+accessible.
 
 **Classless CSS.** The stylesheet targets semantic HTML elements directly.
 Pico CSS was removed in favor of a hand-rolled Solarized-themed stylesheet

@@ -3,8 +3,8 @@ info:
   title: rdr API
   version: 1.0.0
   description: |
-    JSON HTTP API for [rdr](https://gitea.nas.lab.chris-allen-lane.com/chrisallenlane/rdr),
-    a self-hosted RSS reader. All endpoints under `/api/v1/` (except
+    JSON HTTP API for [rdr](https://github.com/chrisallenlane/rdr), a
+    self-hosted RSS reader. All endpoints under `/api/v1/` (except
     `/api/v1/healthz`) require a bearer token in the `Authorization`
     header.
 

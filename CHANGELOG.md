@@ -4,6 +4,11 @@
 
 ### Features
 
+- **Persistent sidebar state.** The sidebar's Feeds and Lists sections
+  now remember their expand/collapse state across page loads via
+  `localStorage`. State is restored before first paint by a tiny
+  head-loaded `sidebar-init.js`. Falls back to the default expanded
+  state when JavaScript is disabled.
 - **JSON API.** All HTML resources (items, feeds, lists, search) are
   now also exposed as a v1 JSON API under `/api/v1/`. Spec-first
   OpenAPI 3.0.3 at `internal/api/openapi.yaml`, served by the running
