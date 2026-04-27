@@ -6,8 +6,14 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
+)
+
+const (
+	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
 // Defines values for HealthStatusStatus.
@@ -53,17 +59,35 @@ type Problem struct {
 	Type string `json:"type"`
 }
 
+// User defines model for User.
+type User struct {
+	// CreatedAt When the user account was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id Database id of the user.
+	Id int64 `json:"id"`
+
+	// Username Login name (unique).
+	Username string `json:"username"`
+}
+
 // BadRequest RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
 type BadRequest = Problem
 
 // InternalServerError RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
 type InternalServerError = Problem
 
+// Unauthorized RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
+type Unauthorized = Problem
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Liveness probe
 	// (GET /api/v1/healthz)
 	GetHealthz(w http.ResponseWriter, r *http.Request)
+	// Identify the authenticated user
+	// (GET /api/v1/me)
+	GetMe(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -80,6 +104,26 @@ func (siw *ServerInterfaceWrapper) GetHealthz(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealthz(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -210,6 +254,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/healthz", wrapper.GetHealthz)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
 
 	return m
 }
