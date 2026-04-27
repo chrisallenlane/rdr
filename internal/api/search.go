@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/chrisallenlane/rdr/internal/search"
 )
 
 // snippetMarkerOpen / snippetMarkerClose are the FTS5 highlight
@@ -14,11 +16,6 @@ const (
 	snippetMarkerOpen  = "[[HIGHLIGHT]]"
 	snippetMarkerClose = "[[/HIGHLIGHT]]"
 )
-
-// searchRejectedChars are the FTS5 query characters this endpoint
-// refuses up-front because they produce confusing failure modes for
-// end users (unbalanced groups, prefix wildcards on tiny terms, etc).
-const searchRejectedChars = `"*()`
 
 // Search implements GET /api/v1/search.
 func (s *Server) Search(w http.ResponseWriter, r *http.Request, params SearchParams) {
@@ -32,7 +29,7 @@ func (s *Server) Search(w http.ResponseWriter, r *http.Request, params SearchPar
 		writeProblem(w, http.StatusBadRequest, "", "", "q is required")
 		return
 	}
-	if strings.ContainsAny(q, searchRejectedChars) {
+	if search.IsRejected(q) {
 		writeProblem(w, http.StatusBadRequest, "", "",
 			`query may not contain any of: " * ( )`)
 		return

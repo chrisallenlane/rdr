@@ -10,6 +10,7 @@ import (
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
 	"github.com/chrisallenlane/rdr/internal/sanitize"
+	"github.com/chrisallenlane/rdr/internal/search"
 )
 
 // searchResult extends model.Item with highlighted snippets from FTS5.
@@ -58,6 +59,13 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reject FTS5 special characters up front so the user sees a clear
+	// error rather than a generic post-hoc one.
+	if search.IsRejected(q) {
+		renderSearchErr()
+		return
+	}
+
 	// Parse page number.
 	page := pageFromQuery(r)
 
@@ -70,7 +78,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	var totalResults int
 	if err := s.db.QueryRow(countQuery, q, user.ID).Scan(&totalResults); err != nil {
-		slog.Warn("search count query failed", "query", q, "error", err)
+		// Avoid logging the raw query — it can contain personal content.
+		slog.Warn("search count query failed", "query_len", len(q), "error", err)
 		renderSearchErr()
 		return
 	}
@@ -93,7 +102,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.db.Query(searchQuery, q, user.ID, itemsPerPage, offset)
 	if err != nil {
-		slog.Warn("search query failed", "query", q, "error", err)
+		slog.Warn("search query failed", "query_len", len(q), "error", err)
 		renderSearchErr()
 		return
 	}

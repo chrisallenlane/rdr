@@ -36,6 +36,10 @@ func (s *Server) handleSettingsForm(w http.ResponseWriter, r *http.Request) {
 		Tokens:       tokens,
 		NewToken:     popNewTokenCookie(w, r),
 	}
+
+	// Token list (and especially the freshly-minted token) must never be
+	// cached by intermediates or the browser back/forward cache.
+	w.Header().Set("Cache-Control", "no-store")
 	s.render(w, r, "settings.html", PageData{Content: content})
 }
 
@@ -126,10 +130,25 @@ func (s *Server) handleRevokeToken(w http.ResponseWriter, r *http.Request) {
 
 const newTokenCookieName = "rdr_new_token"
 
+// newTokenCookiePath constrains the cookie's Path so the raw token only
+// rides on requests to /settings* (where it's read), not on every
+// same-origin request for 60 seconds.
+const newTokenCookiePath = "/settings"
+
 // setNewTokenCookie writes a short-lived (60s) cookie carrying the raw
-// token so the next /settings render can show it once.
+// token so the next /settings render can show it once. The cookie path
+// is scoped to /settings so the token does not leak onto unrelated
+// requests during its lifetime.
 func setNewTokenCookie(w http.ResponseWriter, r *http.Request, raw string) {
-	setCookie(w, r, newTokenCookieName, raw, 60, true)
+	http.SetCookie(w, &http.Cookie{
+		Name:     newTokenCookieName,
+		Value:    raw,
+		MaxAge:   60,
+		Path:     newTokenCookiePath,
+		HttpOnly: true,
+		Secure:   middleware.IsSecureRequest(r),
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 // popNewTokenCookie returns and clears the new-token cookie set by a
@@ -139,7 +158,15 @@ func popNewTokenCookie(w http.ResponseWriter, r *http.Request) string {
 	if err != nil {
 		return ""
 	}
-	setCookie(w, r, newTokenCookieName, "", -1, true)
+	http.SetCookie(w, &http.Cookie{
+		Name:     newTokenCookieName,
+		Value:    "",
+		MaxAge:   -1,
+		Path:     newTokenCookiePath,
+		HttpOnly: true,
+		Secure:   middleware.IsSecureRequest(r),
+		SameSite: http.SameSiteLaxMode,
+	})
 	return c.Value
 }
 
