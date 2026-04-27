@@ -41,6 +41,18 @@ type AddFeedRequest struct {
 	Url string `json:"url"`
 }
 
+// AddFeedToListRequest defines model for AddFeedToListRequest.
+type AddFeedToListRequest struct {
+	// FeedId Id of a feed owned by the caller to add to the list.
+	FeedId int64 `json:"feed_id"`
+}
+
+// CreateListRequest defines model for CreateListRequest.
+type CreateListRequest struct {
+	// Name Name for the new list. Must be unique per user.
+	Name string `json:"name"`
+}
+
 // Feed defines model for Feed.
 type Feed struct {
 	// ConsecutiveFailures Number of consecutive fetch failures since the last success.
@@ -106,6 +118,23 @@ type Item struct {
 	Url         string     `json:"url"`
 }
 
+// List defines model for List.
+type List struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// FeedCount Number of feeds currently assigned to this list.
+	FeedCount int    `json:"feed_count"`
+	Id        int64  `json:"id"`
+	Name      string `json:"name"`
+}
+
+// ListDetail defines model for ListDetail.
+type ListDetail struct {
+	// Feeds Feeds currently in this list, ordered by title.
+	Feeds []Feed `json:"feeds"`
+	List  List   `json:"list"`
+}
+
 // MarkReadRequest defines model for MarkReadRequest.
 type MarkReadRequest struct {
 	// FeedId Restrict the mark-read to items in this feed.
@@ -138,6 +167,12 @@ type Problem struct {
 	// Type URI identifying the problem type. `about:blank` is used for
 	// problems that don't have a dedicated type URI.
 	Type string `json:"type"`
+}
+
+// RenameListRequest defines model for RenameListRequest.
+type RenameListRequest struct {
+	// Name New name for the list. Must be unique per user.
+	Name string `json:"name"`
 }
 
 // SyncStatus defines model for SyncStatus.
@@ -206,6 +241,15 @@ type AddFeedJSONRequestBody = AddFeedRequest
 // MarkItemsReadJSONRequestBody defines body for MarkItemsRead for application/json ContentType.
 type MarkItemsReadJSONRequestBody = MarkReadRequest
 
+// CreateListJSONRequestBody defines body for CreateList for application/json ContentType.
+type CreateListJSONRequestBody = CreateListRequest
+
+// RenameListJSONRequestBody defines body for RenameList for application/json ContentType.
+type RenameListJSONRequestBody = RenameListRequest
+
+// AddFeedToListJSONRequestBody defines body for AddFeedToList for application/json ContentType.
+type AddFeedToListJSONRequestBody = AddFeedToListRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// List feeds
@@ -244,6 +288,27 @@ type ServerInterface interface {
 	// Star an item
 	// (PUT /api/v1/items/{id}/star)
 	StarItem(w http.ResponseWriter, r *http.Request, id IDPath)
+	// List lists
+	// (GET /api/v1/lists)
+	ListLists(w http.ResponseWriter, r *http.Request)
+	// Create a list
+	// (POST /api/v1/lists)
+	CreateList(w http.ResponseWriter, r *http.Request)
+	// Delete a list
+	// (DELETE /api/v1/lists/{id})
+	DeleteList(w http.ResponseWriter, r *http.Request, id IDPath)
+	// Get a list
+	// (GET /api/v1/lists/{id})
+	GetList(w http.ResponseWriter, r *http.Request, id IDPath)
+	// Rename a list
+	// (PATCH /api/v1/lists/{id})
+	RenameList(w http.ResponseWriter, r *http.Request, id IDPath)
+	// Add a feed to a list
+	// (POST /api/v1/lists/{id}/feeds)
+	AddFeedToList(w http.ResponseWriter, r *http.Request, id IDPath)
+	// Remove a feed from a list
+	// (DELETE /api/v1/lists/{id}/feeds/{feedID})
+	RemoveFeedFromList(w http.ResponseWriter, r *http.Request, id IDPath, feedID int64)
 	// Identify the authenticated user
 	// (GET /api/v1/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -592,6 +657,210 @@ func (siw *ServerInterfaceWrapper) StarItem(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// ListLists operation middleware
+func (siw *ServerInterfaceWrapper) ListLists(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListLists(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateList operation middleware
+func (siw *ServerInterfaceWrapper) CreateList(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateList(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteList operation middleware
+func (siw *ServerInterfaceWrapper) DeleteList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IDPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteList(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetList operation middleware
+func (siw *ServerInterfaceWrapper) GetList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IDPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetList(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameList operation middleware
+func (siw *ServerInterfaceWrapper) RenameList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IDPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameList(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddFeedToList operation middleware
+func (siw *ServerInterfaceWrapper) AddFeedToList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IDPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddFeedToList(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveFeedFromList operation middleware
+func (siw *ServerInterfaceWrapper) RemoveFeedFromList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IDPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "feedID" -------------
+	var feedID int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "feedID", r.PathValue("feedID"), &feedID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "feedID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveFeedFromList(w, r, id, feedID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
@@ -744,6 +1013,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/items/{id}", wrapper.GetItem)
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/v1/items/{id}/star", wrapper.UnstarItem)
 	m.HandleFunc("PUT "+options.BaseURL+"/api/v1/items/{id}/star", wrapper.StarItem)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/lists", wrapper.ListLists)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/lists", wrapper.CreateList)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/v1/lists/{id}", wrapper.DeleteList)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/lists/{id}", wrapper.GetList)
+	m.HandleFunc("PATCH "+options.BaseURL+"/api/v1/lists/{id}", wrapper.RenameList)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/lists/{id}/feeds", wrapper.AddFeedToList)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/v1/lists/{id}/feeds/{feedID}", wrapper.RemoveFeedFromList)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
 
 	return m
