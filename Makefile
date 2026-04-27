@@ -3,7 +3,7 @@ BUILD_DIR := ./bin
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS   := -s -w -X main.version=$(VERSION)
 
-.PHONY: build run test fuzz lint fmt vet a11y clean docker docker-multiarch release help
+.PHONY: build run test fuzz lint lint-spec fmt vet generate a11y clean docker docker-multiarch release help
 
 ## Show available commands
 help:
@@ -35,6 +35,14 @@ fuzz:
 lint:
 	golangci-lint run ./...
 	npx eslint --ignore-pattern 'static/js/htmx.min.js' static/js/
+
+## Lint the OpenAPI spec with spectral
+lint-spec:
+	npx -y @stoplight/spectral-cli lint internal/api/openapi.yaml
+
+## Regenerate code from OpenAPI spec (oapi-codegen)
+generate:
+	go generate ./...
 
 ## Format code
 fmt:

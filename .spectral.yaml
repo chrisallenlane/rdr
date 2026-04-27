@@ -1,0 +1,17 @@
+extends: [["spectral:oas", "all"]]
+rules:
+  # No external contact for a single-user homelab tool.
+  info-contact: off
+  # Reusable response components (BadRequest, InternalServerError, etc.)
+  # are defined in components/responses for use across operations as the
+  # API surface grows. The first operations don't reference them yet, so
+  # spectral flags them as "unused" — but pruning them would just trade a
+  # warning today for churn tomorrow.
+  oas3-unused-component: off
+  # The spec is served from same-origin and uses the relative URL "/" as
+  # the only server entry.
+  oas3-server-not-example.com: off
+  # Operation tags are useful for grouping but not required for our small
+  # surface area. We do tag operations; this lets future entries skip
+  # without ceremony.
+  operation-tag-defined: off

@@ -42,6 +42,20 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      - name: openapi spec lint (spectral)
+        run: npx -y @stoplight/spectral-cli lint internal/api/openapi.yaml
+
+      - name: generated code is up to date
+        # Re-runs `go generate ./...` and fails if any tracked file changed.
+        # Catches PRs that edit api/openapi.yaml without regenerating
+        # internal/api/server.gen.go.
+        run: |
+          go generate ./...
+          if ! git diff --exit-code; then
+            echo "go generate ./... produced a diff; commit the regenerated files."
+            exit 1
+          fi
+
       - name: golangci-lint
         run: golangci-lint run ./...
 
