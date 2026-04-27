@@ -175,6 +175,33 @@ type RenameListRequest struct {
 	Name string `json:"name"`
 }
 
+// SearchResult defines model for SearchResult.
+type SearchResult struct {
+	// ContentSnippet Content snippet rendered as `{text, highlight}` segments.
+	ContentSnippet []SnippetSegment `json:"content_snippet"`
+	FeedId         int64            `json:"feed_id"`
+	FeedTitle      string           `json:"feed_title"`
+	Id             int64            `json:"id"`
+	PublishedAt    *time.Time       `json:"published_at,omitempty"`
+	Read           bool             `json:"read"`
+	Starred        bool             `json:"starred"`
+	Title          string           `json:"title"`
+
+	// TitleSnippet Title snippet rendered as `{text, highlight}` segments.
+	// `highlight: true` segments correspond to FTS5 match runs.
+	TitleSnippet []SnippetSegment `json:"title_snippet"`
+	Url          string           `json:"url"`
+}
+
+// SnippetSegment defines model for SnippetSegment.
+type SnippetSegment struct {
+	// Highlight Whether this segment matched the search query.
+	Highlight bool `json:"highlight"`
+
+	// Text Plain-text segment (HTML stripped).
+	Text string `json:"text"`
+}
+
 // SyncStatus defines model for SyncStatus.
 type SyncStatus struct {
 	// Syncing True if a feed sync is currently in progress.
@@ -233,6 +260,15 @@ type ListItemsParams struct {
 
 	// Starred If true, only return starred items.
 	Starred *bool `form:"starred,omitempty" json:"starred,omitempty"`
+}
+
+// SearchParams defines parameters for Search.
+type SearchParams struct {
+	// Q Search query.
+	Q string `form:"q" json:"q"`
+
+	// Page 1-based page index. Page size is 50.
+	Page *PageParam `form:"page,omitempty" json:"page,omitempty"`
 }
 
 // AddFeedJSONRequestBody defines body for AddFeed for application/json ContentType.
@@ -312,6 +348,9 @@ type ServerInterface interface {
 	// Identify the authenticated user
 	// (GET /api/v1/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
+	// Full-text search items
+	// (GET /api/v1/search)
+	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -881,6 +920,54 @@ func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request)
 	handler.ServeHTTP(w, r)
 }
 
+// Search operation middleware
+func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchParams
+
+	// ------------- Required query parameter "q" -------------
+
+	if paramValue := r.URL.Query().Get("q"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		return
+	}
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Search(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1021,6 +1108,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1/lists/{id}/feeds", wrapper.AddFeedToList)
 	m.HandleFunc("DELETE "+options.BaseURL+"/api/v1/lists/{id}/feeds/{feedID}", wrapper.RemoveFeedFromList)
 	m.HandleFunc("GET "+options.BaseURL+"/api/v1/me", wrapper.GetMe)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1/search", wrapper.Search)
 
 	return m
 }
