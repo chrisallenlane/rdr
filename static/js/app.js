@@ -130,6 +130,58 @@
     });
   }
 
+  // --- Sidebar: persist <details> expand/collapse state in localStorage ---
+  function initSidebarPersistence() {
+    var STORAGE_KEY = "rdr.sidebar.closed";
+    var ALLOWED = { feeds: true, lists: true };
+
+    var sections = document.querySelectorAll("details[data-persist-id]");
+    if (sections.length === 0) return;
+
+    function readClosed() {
+      try {
+        var raw = window.localStorage.getItem(STORAGE_KEY);
+        if (!raw) return {};
+        var set = {};
+        raw.split(",").forEach(function (id) {
+          if (ALLOWED[id]) set[id] = true;
+        });
+        return set;
+      } catch (e) {
+        void e;
+        return {};
+      }
+    }
+
+    function writeClosed() {
+      var ids = [];
+      sections.forEach(function (el) {
+        var id = el.getAttribute("data-persist-id");
+        if (ALLOWED[id] && !el.open) ids.push(id);
+      });
+      try {
+        if (ids.length === 0) {
+          window.localStorage.removeItem(STORAGE_KEY);
+        } else {
+          window.localStorage.setItem(STORAGE_KEY, ids.join(","));
+        }
+      } catch (e) {
+        // localStorage unavailable (private browsing, quota): silently no-op.
+        void e;
+      }
+    }
+
+    // Backstop: sidebar-init.js (head-loaded) handles pre-paint state
+    // restoration. Re-applying here covers the case where the head script
+    // didn't run (cache miss + script error, hypothetically).
+    var closed = readClosed();
+    sections.forEach(function (el) {
+      var id = el.getAttribute("data-persist-id");
+      if (closed[id]) el.open = false;
+      el.addEventListener("toggle", writeClosed);
+    });
+  }
+
   // --- Theme selector: auto-submit on change ---
   function initThemeSelect() {
     var select = document.querySelector('select[name="theme"]');
@@ -304,6 +356,7 @@
   initItemsList();
   initPrevNext();
   initSidebar();
+  initSidebarPersistence();
   initThemeSelect();
   initShortcutsHelp();
   initSettingsForm();

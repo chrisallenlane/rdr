@@ -8,7 +8,7 @@
                 <button type="submit" class="sync-button" aria-label="Sync all feeds" title="Sync all feeds"><span class="sync-icon">⟳</span></button>
             </form>
         </div>
-        <details open>
+        <details data-persist-id="feeds" open>
             <summary>Feeds</summary>
             <ul>
                 {{range .Content.Feeds}}
@@ -17,7 +17,7 @@
             </ul>
         </details>
         {{if .Content.Lists}}
-        <details open>
+        <details data-persist-id="lists" open>
             <summary>Lists</summary>
             <ul>
                 {{range .Content.Lists}}
