@@ -291,6 +291,23 @@ func TestOpen_UpgradesFromV1_1_0(t *testing.T) {
 	if ftsCount != 1 {
 		t.Errorf("FTS5 row lost during upgrade: got %d matches, want 1", ftsCount)
 	}
+
+	// The v1.2.x api_tokens table is created by migration 002 and must
+	// be usable end-to-end against the upgraded DB. This is the realistic
+	// "existing v1.1.0 user adopts API tokens" path.
+	if !tableExists(t, db, "api_tokens") {
+		t.Fatal("api_tokens not created during upgrade")
+	}
+	res, err := db.Exec(
+		`INSERT INTO api_tokens (user_id, name, token_hash) VALUES (?, ?, ?)`,
+		1, "post-upgrade-token", "deadbeef",
+	)
+	if err != nil {
+		t.Fatalf("inserting api_token after upgrade: %v", err)
+	}
+	if rows, _ := res.RowsAffected(); rows != 1 {
+		t.Errorf("expected 1 row inserted, got %d", rows)
+	}
 }
 
 // tableExists checks sqlite_master for a table or virtual table.

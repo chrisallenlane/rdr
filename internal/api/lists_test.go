@@ -290,6 +290,25 @@ func TestAddFeedToList_RejectsCrossUserFeed(t *testing.T) {
 	}
 }
 
+// AddFeedToList is idempotent: re-adding a feed already in the same list
+// returns 204 (not 404). The single-statement UPDATE returns 0 rows
+// affected for "feed already there", so the handler distinguishes that
+// from "ownership failure" via an explicit existence check.
+func TestAddFeedToList_AlreadyInList_Returns204(t *testing.T) {
+	db, aliceTok, _, aliceList, aliceFeed, _, _ := listFixture(t)
+	h := New(Config{DB: db})
+	body := urlf(`{"feed_id":%d}`, aliceFeed)
+	target := urlf("/api/v1/lists/%d/feeds", aliceList)
+
+	// Seed state: alice's feed is already in alice's list (per listFixture).
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodPost, target, aliceTok, body))
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("idempotent re-add: got %d, want 204; body=%q",
+			rec.Code, rec.Body.String())
+	}
+}
+
 // IDOR: alice tries to put her own feed into bob's list.
 func TestAddFeedToList_RejectsCrossUserList(t *testing.T) {
 	db, aliceTok, _, _, aliceFeed, bobList, _ := listFixture(t)

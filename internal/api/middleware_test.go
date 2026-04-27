@@ -124,6 +124,26 @@ func TestBearerAuth_RejectsExpiredToken(t *testing.T) {
 	}
 }
 
+func TestGetMe_UserRowDeleted(t *testing.T) {
+	// A token validates against api_tokens.user_id. If the matching
+	// users row has been deleted between token issuance and the current
+	// request, GetMe must respond 401, not 500.
+	db, uid, raw := freshTokenForUser(t, "alice")
+	if _, err := db.Exec(`DELETE FROM users WHERE id = ?`, uid); err != nil {
+		t.Fatalf("deleting user: %v", err)
+	}
+	h := New(Config{DB: db})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	req.Header.Set("Authorization", "Bearer "+raw)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status: got %d, want 401 (orphaned token)", rec.Code)
+	}
+}
+
 func TestBearerAuth_PublicPathsBypass(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	h := New(Config{DB: db})

@@ -293,3 +293,129 @@ func TestMarkRead_RejectsBothFilters(t *testing.T) {
 func urlf(format string, a ...any) string {
 	return fmt.Sprintf(format, a...)
 }
+
+// TestListItems_PaginationLinks verifies that the Link (RFC 5988) and
+// X-Total-Count (RFC 6648-ish) headers wire up correctly when the
+// result set spans multiple pages. Earlier tests use small fixtures
+// where total <= pageSize, so the Link branches in writePagination
+// were uncovered.
+func TestListItems_PaginationLinks(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	uid := testutil.InsertUser(t, db, "alice")
+	tok, _, err := token.Generate(db, uid, "test", time.Time{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	// Create a feed and 75 items so we cross the page-size threshold.
+	res, err := db.Exec(
+		`INSERT INTO feeds (user_id, url, title) VALUES (?, ?, ?)`,
+		uid, "https://example.com/feed", "Big Feed",
+	)
+	if err != nil {
+		t.Fatalf("insert feed: %v", err)
+	}
+	feedID, _ := res.LastInsertId()
+
+	const itemCount = 75
+	now := time.Now()
+	for i := 0; i < itemCount; i++ {
+		if _, err := db.Exec(
+			`INSERT INTO items (feed_id, guid, title, published_at)
+			 VALUES (?, ?, ?, ?)`,
+			feedID,
+			fmt.Sprintf("guid-%d", i),
+			fmt.Sprintf("Item %d", i),
+			now.Add(-time.Duration(i)*time.Minute).Format(time.RFC3339),
+		); err != nil {
+			t.Fatalf("insert item %d: %v", i, err)
+		}
+	}
+
+	h := New(Config{DB: db})
+
+	// Page 1: expect next + last; should NOT carry first/prev.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodGet, "/api/v1/items?page=1", tok, ""))
+
+	if got := rec.Header().Get("X-Total-Count"); got != "75" {
+		t.Errorf("X-Total-Count: got %q, want 75", got)
+	}
+	link := rec.Header().Get("Link")
+	if link == "" {
+		t.Fatal("page 1: Link header missing")
+	}
+	if !strings.Contains(link, `rel="next"`) || !strings.Contains(link, `rel="last"`) {
+		t.Errorf(`page 1 Link missing next/last rels: %q`, link)
+	}
+	if strings.Contains(link, `rel="prev"`) || strings.Contains(link, `rel="first"`) {
+		t.Errorf(`page 1 Link should not contain prev/first: %q`, link)
+	}
+	// page=2 in next, page=2 in last (because 75 items / 50 = 2 pages)
+	if !strings.Contains(link, "page=2") {
+		t.Errorf(`page 1 Link should reference page=2: %q`, link)
+	}
+
+	// Page 2: expect first + prev; no next/last.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodGet, "/api/v1/items?page=2", tok, ""))
+
+	link = rec.Header().Get("Link")
+	if !strings.Contains(link, `rel="prev"`) || !strings.Contains(link, `rel="first"`) {
+		t.Errorf(`page 2 Link missing prev/first rels: %q`, link)
+	}
+	if strings.Contains(link, `rel="next"`) || strings.Contains(link, `rel="last"`) {
+		t.Errorf(`page 2 Link should not contain next/last: %q`, link)
+	}
+	if !strings.Contains(link, "page=1") {
+		t.Errorf(`page 2 Link should reference page=1: %q`, link)
+	}
+}
+
+// TestMarkRead_FilterByList covers the list_id branch of MarkItemsRead,
+// including the "list belongs to another user" no-op case (which does
+// NOT leak data — RowsAffected=0 because the IN-subquery is false).
+func TestMarkRead_FilterByList(t *testing.T) {
+	db, aliceTok, bobTok, aliceFeed, _ := itemFixture(t)
+
+	// Alice creates a list and adds her feed to it.
+	res, err := db.Exec(
+		`INSERT INTO lists (user_id, name) VALUES (?, ?)`, 1, "alice-list",
+	)
+	if err != nil {
+		t.Fatalf("create list: %v", err)
+	}
+	listID, _ := res.LastInsertId()
+	if _, err := db.Exec(
+		`UPDATE feeds SET list_id = ? WHERE id = ?`, listID, aliceFeed,
+	); err != nil {
+		t.Fatalf("attach feed to list: %v", err)
+	}
+
+	h := New(Config{DB: db})
+
+	// Owned list: marks alice's 2 unread items.
+	body := urlf(`{"list_id": %d}`, listID)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/v1/items/mark-read", aliceTok, body))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("alice mark-read by list: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	var resp MarkReadResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.Marked != 2 {
+		t.Errorf("alice: marked=%d, want 2", resp.Marked)
+	}
+
+	// Bob targets alice's list_id: silently no-ops (no data leak, no
+	// 404 — this is the documented contract for batch mark-read).
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/v1/items/mark-read", bobTok, body))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bob cross-user mark-read: status=%d", rec.Code)
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.Marked != 0 {
+		t.Errorf("bob cross-user: marked=%d, want 0", resp.Marked)
+	}
+}
