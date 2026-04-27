@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 )
@@ -47,18 +46,10 @@ func writePagination(w http.ResponseWriter, r *http.Request, total, page int) {
 // linkRel formats a single Link header relation entry pointing at the
 // current request path with `?page=<n>` (preserving other query params).
 func linkRel(r *http.Request, rel string, page int) string {
-	q := cloneQuery(r.URL.Query())
+	q := r.URL.Query()
 	q.Set("page", strconv.Itoa(page))
 	u := r.URL.Path + "?" + q.Encode()
 	return fmt.Sprintf("<%s>; rel=%q", u, rel)
-}
-
-func cloneQuery(q url.Values) url.Values {
-	out := make(url.Values, len(q))
-	for k, vs := range q {
-		out[k] = append([]string(nil), vs...)
-	}
-	return out
 }
 
 // effectivePage clamps a requested page number to [1, totalPages] and

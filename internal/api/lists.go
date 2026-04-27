@@ -12,9 +12,8 @@ import (
 
 // ListLists implements GET /api/v1/lists.
 func (s *Server) ListLists(w http.ResponseWriter, r *http.Request) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -30,9 +29,8 @@ func (s *Server) ListLists(w http.ResponseWriter, r *http.Request) {
 
 // GetList implements GET /api/v1/lists/{id}.
 func (s *Server) GetList(w http.ResponseWriter, r *http.Request, id IDPath) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -74,17 +72,13 @@ func (s *Server) GetList(w http.ResponseWriter, r *http.Request, id IDPath) {
 
 // CreateList implements POST /api/v1/lists.
 func (s *Server) CreateList(w http.ResponseWriter, r *http.Request) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
 	var body CreateListRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&body); err != nil {
-		writeProblem(w, http.StatusBadRequest, "", "", "request body is not valid JSON")
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 	name := strings.TrimSpace(body.Name)
@@ -124,17 +118,13 @@ func (s *Server) CreateList(w http.ResponseWriter, r *http.Request) {
 
 // RenameList implements PATCH /api/v1/lists/{id}.
 func (s *Server) RenameList(w http.ResponseWriter, r *http.Request, id IDPath) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
 	var body RenameListRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&body); err != nil {
-		writeProblem(w, http.StatusBadRequest, "", "", "request body is not valid JSON")
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 	name := strings.TrimSpace(body.Name)
@@ -173,9 +163,8 @@ func (s *Server) RenameList(w http.ResponseWriter, r *http.Request, id IDPath) {
 
 // DeleteList implements DELETE /api/v1/lists/{id}.
 func (s *Server) DeleteList(w http.ResponseWriter, r *http.Request, id IDPath) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -198,17 +187,13 @@ func (s *Server) DeleteList(w http.ResponseWriter, r *http.Request, id IDPath) {
 
 // AddFeedToList implements POST /api/v1/lists/{id}/feeds.
 func (s *Server) AddFeedToList(w http.ResponseWriter, r *http.Request, id IDPath) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
 	var body AddFeedToListRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&body); err != nil {
-		writeProblem(w, http.StatusBadRequest, "", "", "request body is not valid JSON")
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 
@@ -252,9 +237,8 @@ func (s *Server) AddFeedToList(w http.ResponseWriter, r *http.Request, id IDPath
 
 // RemoveFeedFromList implements DELETE /api/v1/lists/{id}/feeds/{feedID}.
 func (s *Server) RemoveFeedFromList(w http.ResponseWriter, r *http.Request, id IDPath, feedID int64) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 

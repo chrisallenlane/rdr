@@ -16,10 +16,8 @@ func (s *Server) GetHealthz(w http.ResponseWriter, _ *http.Request) {
 
 // GetMe returns the authenticated user's identity.
 func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		// Should be unreachable: bearerAuth only forwards on success.
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -64,4 +62,31 @@ func parseSQLiteTimestamp(s string) (time.Time, error) {
 		return t, nil
 	}
 	return time.Parse("2006-01-02 15:04:05", s)
+}
+
+// requireUserID extracts the authenticated user id from the request
+// context. A zero return means bearerAuth's bypass list let an
+// unauthenticated request through, which is a programming error —
+// the response is 401 rather than a panic. The caller must return
+// immediately when ok is false.
+func requireUserID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	uid := userIDFromContext(r.Context())
+	if uid == 0 {
+		writeProblem(w, http.StatusUnauthorized, "", "", "")
+		return 0, false
+	}
+	return uid, true
+}
+
+// decodeJSON parses the request body into dst with strict-mode rules
+// (DisallowUnknownFields). On failure it writes a 400 problem response
+// and returns false; the caller must return immediately.
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		writeProblem(w, http.StatusBadRequest, "", "", "request body is not valid JSON")
+		return false
+	}
+	return true
 }

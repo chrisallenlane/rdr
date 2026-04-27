@@ -30,9 +30,8 @@ SELECT f.id, f.list_id, f.url, f.title, f.site_url, f.favicon_url,
 
 // ListFeeds implements GET /api/v1/feeds.
 func (s *Server) ListFeeds(w http.ResponseWriter, r *http.Request) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -63,9 +62,8 @@ func (s *Server) ListFeeds(w http.ResponseWriter, r *http.Request) {
 
 // GetFeed implements GET /api/v1/feeds/{id}.
 func (s *Server) GetFeed(w http.ResponseWriter, r *http.Request, id IDPath) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -88,17 +86,13 @@ func (s *Server) GetFeed(w http.ResponseWriter, r *http.Request, id IDPath) {
 // synchronous; the initial fetch is fire-and-forget so the response
 // returns as soon as the row exists.
 func (s *Server) AddFeed(w http.ResponseWriter, r *http.Request) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
 	var body AddFeedRequest
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&body); err != nil {
-		writeProblem(w, http.StatusBadRequest, "", "", "request body is not valid JSON")
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 
@@ -165,9 +159,8 @@ func (s *Server) AddFeed(w http.ResponseWriter, r *http.Request) {
 
 // DeleteFeed implements DELETE /api/v1/feeds/{id}.
 func (s *Server) DeleteFeed(w http.ResponseWriter, r *http.Request, id IDPath) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -191,9 +184,7 @@ func (s *Server) DeleteFeed(w http.ResponseWriter, r *http.Request, id IDPath) {
 // SyncFeeds implements POST /api/v1/feeds/sync. The trigger is
 // best-effort: a sync that is already in progress is left running.
 func (s *Server) SyncFeeds(w http.ResponseWriter, r *http.Request) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	if _, ok := requireUserID(w, r); !ok {
 		return
 	}
 	if s.syncFeeds != nil {
@@ -204,9 +195,7 @@ func (s *Server) SyncFeeds(w http.ResponseWriter, r *http.Request) {
 
 // GetSyncStatus implements GET /api/v1/feeds/sync/status.
 func (s *Server) GetSyncStatus(w http.ResponseWriter, r *http.Request) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	if _, ok := requireUserID(w, r); !ok {
 		return
 	}
 	syncing := s.syncStatus != nil && s.syncStatus()

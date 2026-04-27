@@ -22,9 +22,8 @@ const searchRejectedChars = `"*()`
 
 // Search implements GET /api/v1/search.
 func (s *Server) Search(w http.ResponseWriter, r *http.Request, params SearchParams) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 

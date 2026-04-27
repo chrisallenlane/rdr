@@ -12,9 +12,8 @@ import (
 
 // ListItems implements GET /api/v1/items.
 func (s *Server) ListItems(w http.ResponseWriter, r *http.Request, params ListItemsParams) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -79,9 +78,8 @@ func (s *Server) ListItems(w http.ResponseWriter, r *http.Request, params ListIt
 
 // GetItem implements GET /api/v1/items/{id}.
 func (s *Server) GetItem(w http.ResponseWriter, r *http.Request, id IDPath) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -118,9 +116,8 @@ func (s *Server) UnstarItem(w http.ResponseWriter, r *http.Request, id IDPath) {
 }
 
 func (s *Server) toggleStar(w http.ResponseWriter, r *http.Request, id IDPath, starred bool) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
@@ -160,19 +157,15 @@ func (s *Server) toggleStar(w http.ResponseWriter, r *http.Request, id IDPath, s
 
 // MarkItemsRead implements POST /api/v1/items/mark-read.
 func (s *Server) MarkItemsRead(w http.ResponseWriter, r *http.Request) {
-	uid := userIDFromContext(r.Context())
-	if uid == 0 {
-		writeProblem(w, http.StatusUnauthorized, "", "", "")
+	uid, ok := requireUserID(w, r)
+	if !ok {
 		return
 	}
 
 	var body MarkReadRequest
 	// Empty body is allowed and means "mark all of caller's items".
 	if r.ContentLength != 0 {
-		dec := json.NewDecoder(r.Body)
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&body); err != nil {
-			writeProblem(w, http.StatusBadRequest, "", "", "request body is not valid JSON")
+		if !decodeJSON(w, r, &body) {
 			return
 		}
 	}
