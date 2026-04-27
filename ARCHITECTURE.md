@@ -15,6 +15,8 @@ internal/
   config/           Environment-variable configuration (Config struct)
   database/         SQLite connection, pragma setup, goose-driven migrations
                     (migrations/*.sql)
+  dbutil/           SQL helpers shared by handler and api (item-filter
+                    builder, UNIQUE-violation check)
   discover/         Feed URL auto-discovery from website URLs
   favicon/          Favicon downloading, slug computation, file management
   handler/          HTTP handlers, routing, server setup, template rendering
@@ -24,7 +26,9 @@ internal/
   model/            Shared domain types (User, Feed, Item, List)
   poller/           Background feed fetcher and data-retention pruner
   sanitize/         HTML sanitization, relative URL resolution, syntax highlighting
+  search/           Shared FTS5 query input helpers (rejected-character set)
   testutil/         Shared test helpers (in-memory DB, fixture insertion)
+  token/            API token generation, validation, listing, revocation
 static/
   css/              Stylesheets (app.css, syntax.css)
   js/               Client-side keyboard shortcuts (progressive enhancement)

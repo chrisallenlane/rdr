@@ -27,6 +27,21 @@
   install. New tables go in their own numbered file; goose stamps
   `goose_db_version` after each successful run.
 
+### Security
+
+- The `rdr_new_token` cookie that carries a freshly-minted API token to
+  the next `/settings` render is now scoped to `Path=/settings` (was
+  `/`), so the raw token does not ride on every same-origin request
+  during its 60-second lifetime.
+- The `/settings` GET response now sends `Cache-Control: no-store` so
+  intermediates and the browser back/forward cache cannot retain the
+  rendered token list.
+- HTML search no longer logs the raw user query at WARN level on FTS5
+  errors — search terms can carry personal content and should not be
+  persisted in logs.
+- HTML search now rejects FTS5 special characters (`"`, `*`, `(`, `)`)
+  up front, matching the API behavior.
+
 ### Internal
 
 - `oapi-codegen` is wired in as a Go tool dependency
@@ -36,6 +51,10 @@
 - The api handler is mounted from `internal/handler/routes.go` via
   `api.New(api.Config{...})`. Test fixtures pass through stub feed
   resolvers so the suite never hits the network.
+- Two small shared internal packages, `internal/dbutil/` and
+  `internal/search/`, hold helpers used by both the HTML and JSON
+  routes (item-filter builder, UNIQUE-violation check, FTS5 rejected-
+  character set).
 
 ## v1.1.0 - 2026-04-25
 

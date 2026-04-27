@@ -53,9 +53,10 @@ generated and committed.
    the new method on `ServerInterface` and the new types. Don't
    hand-edit the generated file.
 4. **Implement.** Add the new method to `*api.Server` in the resource
-   file that matches its tag (`feeds.go`, `lists.go`, etc.). Read the
-   user id with `userIDFromContext(r.Context())`, scope every query by
-   `user_id`, and emit errors via `writeProblem(...)`.
+   file that matches its tag (`feeds.go`, `lists.go`, etc.). Open the
+   handler with `uid, ok := requireUserID(w, r); if !ok { return }`,
+   decode JSON bodies via `decodeJSON(w, r, &body)`, scope every query
+   by `user_id`, and emit errors via `writeProblem(...)`.
 5. **Test.** Add tests alongside `*_test.go`. The standard fixture seeds
    two users so you can assert IDOR (alice can't reach bob's resource);
    `authedRequest(method, target, tok, body)` is the shorthand.

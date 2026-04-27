@@ -75,10 +75,12 @@ make lint-spec      # Spectral lint of the OpenAPI document
   `pageSize = 50` in `internal/api/pagination.go`.
 - Bearer auth is enforced at the mux level by `bearerAuth` in
   `middleware.go`. Public paths are listed in `isPublicAPIPath`. Within
-  a handler, the authenticated user id is read from
-  `userIDFromContext(r.Context())`; a zero return means the bypass list
-  let an unauthenticated request through, which is a programming error
-  — handlers respond 401 in that case rather than crash.
+  a handler, open with `uid, ok := requireUserID(w, r); if !ok { return }`
+  — that helper reads `userIDFromContext(r.Context())` and writes a
+  401 problem response if the bypass list let an unauthenticated
+  request through (a programming error). JSON request bodies are
+  parsed via `decodeJSON(w, r, &body)`, which writes a 400 problem
+  response on malformed input.
 - IDOR scoping is uniform: foreign-owned resources return 404, never
   403 or "not found vs forbidden" distinguishing detail.
 - Tests use `testutil.OpenTestDB(t)` plus `token.Generate` to mint a
