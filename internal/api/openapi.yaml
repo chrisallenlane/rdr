@@ -24,6 +24,8 @@ tags:
     description: Caller-identity endpoints.
   - name: items
     description: Feed items (articles).
+  - name: lists
+    description: Lists (user-defined groupings of feeds).
   - name: system
     description: Liveness, spec, and other operational endpoints.
 
@@ -185,6 +187,170 @@ paths:
                 $ref: "#/components/schemas/SyncStatus"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/lists:
+    get:
+      operationId: listLists
+      summary: List lists
+      description: Returns every list belonging to the authenticated user, ordered by name.
+      tags: [lists]
+      responses:
+        "200":
+          description: Lists.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/List"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createList
+      summary: Create a list
+      description: |
+        Creates a new list with the given name. Returns 409 if the
+        caller already has a list with that name.
+      tags: [lists]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateListRequest"
+      responses:
+        "201":
+          description: List created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/List"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/lists/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IDPath"
+    get:
+      operationId: getList
+      summary: Get a list
+      description: |
+        Returns a list along with the feeds it contains. 404 if the
+        list does not exist or does not belong to the caller.
+      tags: [lists]
+      responses:
+        "200":
+          description: The list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: renameList
+      summary: Rename a list
+      description: |
+        Renames a list. Returns 409 if another list owned by the caller
+        already has the requested name.
+      tags: [lists]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameListRequest"
+      responses:
+        "200":
+          description: List renamed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/List"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteList
+      summary: Delete a list
+      description: |
+        Deletes a list. Feeds in the list are unlinked (their `list_id`
+        is set to NULL); feeds and their items are not deleted.
+      tags: [lists]
+      responses:
+        "204":
+          description: List deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/lists/{id}/feeds:
+    parameters:
+      - $ref: "#/components/parameters/IDPath"
+    post:
+      operationId: addFeedToList
+      summary: Add a feed to a list
+      description: |
+        Sets `feeds.list_id` for the given feed. Both the list and the
+        feed must belong to the caller; 404 is returned if either is
+        not owned (the two cases are not distinguished). A feed may
+        only belong to one list at a time — calling this endpoint
+        moves the feed if it was previously in another list.
+      tags: [lists]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddFeedToListRequest"
+      responses:
+        "204":
+          description: Feed added.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/lists/{id}/feeds/{feedID}:
+    parameters:
+      - $ref: "#/components/parameters/IDPath"
+      - in: path
+        name: feedID
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+        description: Numeric id of the feed.
+    delete:
+      operationId: removeFeedFromList
+      summary: Remove a feed from a list
+      description: |
+        Clears `feeds.list_id` for the given feed (sets it to NULL).
+        Returns 204 whether or not the feed was actually in the list,
+        as long as the list belongs to the caller.
+      tags: [lists]
+      responses:
+        "204":
+          description: Feed removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/items:
     get:
@@ -432,6 +598,68 @@ components:
         syncing:
           type: boolean
           description: True if a feed sync is currently in progress.
+
+    List:
+      type: object
+      required: [id, name, created_at, feed_count]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        feed_count:
+          type: integer
+          minimum: 0
+          description: Number of feeds currently assigned to this list.
+
+    ListDetail:
+      type: object
+      required: [list, feeds]
+      additionalProperties: false
+      properties:
+        list:
+          $ref: "#/components/schemas/List"
+        feeds:
+          type: array
+          description: Feeds currently in this list, ordered by title.
+          items:
+            $ref: "#/components/schemas/Feed"
+
+    CreateListRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Name for the new list. Must be unique per user.
+
+    RenameListRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: New name for the list. Must be unique per user.
+
+    AddFeedToListRequest:
+      type: object
+      required: [feed_id]
+      additionalProperties: false
+      properties:
+        feed_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Id of a feed owned by the caller to add to the list.
 
     Item:
       type: object
