@@ -1,0 +1,95 @@
+openapi: 3.0.3
+info:
+  title: rdr API
+  version: 1.0.0
+  description: |
+    JSON HTTP API for [rdr](https://gitea.nas.lab.chris-allen-lane.com/chrisallenlane/rdr),
+    a self-hosted RSS reader. All endpoints under `/api/v1/` (except
+    `/api/v1/healthz`) require a bearer token in the `Authorization`
+    header.
+
+    Errors follow [RFC 7807 Problem Details](https://tools.ietf.org/html/rfc7807).
+    Paginated lists use `Link` (RFC 5988) and `X-Total-Count` headers.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: /
+    description: Same-origin
+
+tags:
+  - name: system
+    description: Liveness, spec, and other operational endpoints.
+
+paths:
+  /api/v1/healthz:
+    get:
+      operationId: getHealthz
+      summary: Liveness probe
+      description: Returns a static OK response. Public — no authentication required.
+      tags: [system]
+      responses:
+        "200":
+          description: Service is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          description: Always "ok". Reserved for future expansion.
+
+    Problem:
+      description: |
+        RFC 7807 Problem Details. Returned for any 4xx or 5xx response.
+      type: object
+      required: [type, title, status]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          format: uri
+          description: |
+            URI identifying the problem type. `about:blank` is used for
+            problems that don't have a dedicated type URI.
+          example: about:blank
+        title:
+          type: string
+          description: Short, human-readable summary of the problem.
+          example: Bad Request
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: HTTP status code.
+          example: 400
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence.
+        instance:
+          type: string
+          format: uri-reference
+          description: URI reference identifying the specific occurrence.
+
+  responses:
+    BadRequest:
+      description: The request is malformed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    InternalServerError:
+      description: An unexpected error occurred.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"

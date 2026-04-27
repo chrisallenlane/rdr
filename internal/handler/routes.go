@@ -4,11 +4,17 @@ import (
 	"io/fs"
 	"net/http"
 
+	"github.com/chrisallenlane/rdr/internal/api"
 	"github.com/chrisallenlane/rdr/internal/middleware"
 )
 
 // routes registers all HTTP routes on the server's mux.
 func (s *Server) routes() {
+	// JSON API (mounts /api/v1/* and /api/openapi.{yaml,json}). The api
+	// package owns its own routing internally; the outer mux delegates
+	// anything under /api/ to it.
+	s.mux.Handle("/api/", api.New(s.db))
+
 	// Static files
 	staticFS, _ := fs.Sub(s.staticFS, "static")
 	s.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
