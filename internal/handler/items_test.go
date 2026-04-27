@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrisallenlane/rdr/internal/dbutil"
 	"github.com/chrisallenlane/rdr/internal/model"
 )
 
@@ -171,7 +172,7 @@ func insertFilterTestData(t *testing.T, s *Server, userID int64) (feed1ID, feed2
 }
 
 // countFiltered runs a COUNT query using the WHERE clause produced by
-// buildItemFilter and returns the result.
+// dbutil.BuildItemFilter and returns the result.
 func countFiltered(
 	t *testing.T,
 	s *Server,
@@ -179,7 +180,7 @@ func countFiltered(
 	unread, starred bool,
 ) int {
 	t.Helper()
-	where, args := buildItemFilter(userID, feedID, listID, unread, starred)
+	where, args := dbutil.BuildItemFilter(userID, feedID, listID, unread, starred)
 	query := "SELECT COUNT(*) FROM items i JOIN feeds f ON i.feed_id = f.id WHERE " + where
 	var n int
 	if err := s.db.QueryRow(query, args...).Scan(&n); err != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/chrisallenlane/rdr/internal/dbutil"
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
 )
@@ -33,7 +34,7 @@ func (s *Server) queryItemsPageData(
 	filterFeed, filterList int64,
 	filterUnread, filterStarred bool,
 ) (itemsPageData, error) {
-	where, args := buildItemFilter(userID, filterFeed, filterList, filterUnread, filterStarred)
+	where, args := dbutil.BuildItemFilter(userID, filterFeed, filterList, filterUnread, filterStarred)
 
 	countQuery := "SELECT COUNT(*) FROM items i JOIN feeds f ON i.feed_id = f.id WHERE " + where
 	var totalItems int
@@ -96,7 +97,7 @@ func (s *Server) queryItemsPageData(
 
 	heading := itemsHeading(filterFeed, filterList, feeds, lists)
 
-	unreadWhere, unreadArgs := buildItemFilter(userID, filterFeed, filterList, true, false)
+	unreadWhere, unreadArgs := dbutil.BuildItemFilter(userID, filterFeed, filterList, true, false)
 	var unreadCount int
 	if err := s.db.QueryRow(
 		"SELECT COUNT(*) FROM items i JOIN feeds f ON i.feed_id = f.id WHERE "+unreadWhere,
@@ -166,7 +167,7 @@ func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build the UPDATE query reusing the same filter logic as the items list.
-	where, args := buildItemFilter(user.ID, filterFeed, filterList, false, false)
+	where, args := dbutil.BuildItemFilter(user.ID, filterFeed, filterList, false, false)
 	query := `UPDATE items SET read = 1, read_at = datetime('now')
 		WHERE read = 0 AND id IN (
 			SELECT i.id FROM items i JOIN feeds f ON i.feed_id = f.id WHERE ` + where + `
@@ -227,33 +228,4 @@ func itemsHeading(filterFeed, filterList int64, feeds []model.Feed, lists []mode
 		}
 	}
 	return "All Items"
-}
-
-// buildItemFilter constructs the WHERE clause and argument list for item
-// queries scoped to a user, optionally filtered by feed, list, read state,
-// and starred state.
-func buildItemFilter(
-	userID int64,
-	filterFeed int64,
-	filterList int64,
-	filterUnread bool,
-	filterStarred bool,
-) (string, []any) {
-	where := "f.user_id = ?"
-	args := []any{userID}
-	if filterFeed > 0 {
-		where += " AND f.id = ?"
-		args = append(args, filterFeed)
-	}
-	if filterUnread {
-		where += " AND i.read = 0"
-	}
-	if filterStarred {
-		where += " AND i.starred = 1"
-	}
-	if filterList > 0 {
-		where += " AND f.list_id = ? AND ? IN (SELECT id FROM lists WHERE user_id = ?)"
-		args = append(args, filterList, filterList, userID)
-	}
-	return where, args
 }

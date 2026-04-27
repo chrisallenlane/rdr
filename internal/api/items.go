@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+
+	"github.com/chrisallenlane/rdr/internal/dbutil"
 )
 
 // ListItems implements GET /api/v1/items.
@@ -25,7 +27,7 @@ func (s *Server) ListItems(w http.ResponseWriter, r *http.Request, params ListIt
 		page = 1
 	}
 
-	where, args := buildItemFilterAPI(uid, feedID, listID, unread, starred)
+	where, args := dbutil.BuildItemFilter(uid, feedID, listID, unread, starred)
 
 	var total int
 	if err := s.db.QueryRow(
@@ -206,29 +208,6 @@ func (s *Server) MarkItemsRead(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(MarkReadResponse{Marked: int(n)})
-}
-
-// buildItemFilterAPI mirrors the WHERE clause used by the HTML
-// /items handler, scoped to the api package to avoid coupling
-// internal/api to internal/handler.
-func buildItemFilterAPI(userID, feedID, listID int64, unread, starred bool) (string, []any) {
-	where := "f.user_id = ?"
-	args := []any{userID}
-	if feedID > 0 {
-		where += " AND f.id = ?"
-		args = append(args, feedID)
-	}
-	if unread {
-		where += " AND i.read = 0"
-	}
-	if starred {
-		where += " AND i.starred = 1"
-	}
-	if listID > 0 {
-		where += " AND f.list_id = ? AND ? IN (SELECT id FROM lists WHERE user_id = ?)"
-		args = append(args, listID, listID, userID)
-	}
-	return where, args
 }
 
 // rowScanner abstracts *sql.Row and *sql.Rows so scanItemRow can serve

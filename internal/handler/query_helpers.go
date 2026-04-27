@@ -2,30 +2,12 @@ package handler
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
-	sqlite "modernc.org/sqlite"
 )
-
-// isUniqueViolation reports whether err is a SQLite uniqueness constraint
-// violation. It matches SQLITE_CONSTRAINT_UNIQUE (triggered by an explicit
-// UNIQUE constraint).
-func isUniqueViolation(err error) bool {
-	var sqliteErr *sqlite.Error
-	if !errors.As(err, &sqliteErr) {
-		return false
-	}
-	c := sqliteErr.Code()
-
-	// Import the numeric constant directly to avoid importing sqlitelib.
-	// SQLITE_CONSTRAINT_UNIQUE = 2067.
-	const sqliteConstraintUnique = 2067
-	return c == sqliteConstraintUnique
-}
 
 // sqlBool is an int that converts to bool when scanned. SQLite stores booleans
 // as integers (0/1); this type avoids the repeated var readInt int / != 0 pattern.

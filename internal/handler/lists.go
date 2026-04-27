@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/chrisallenlane/rdr/internal/dbutil"
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
 )
@@ -92,7 +93,7 @@ func (s *Server) handleCreateList(w http.ResponseWriter, r *http.Request) {
 		user.ID, name,
 	)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if dbutil.IsUniqueViolation(err) {
 			if isHTMXRequest(r) {
 				flash(w, r, "A list with that name already exists.")
 				w.WriteHeader(http.StatusUnprocessableEntity)

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"database/sql"
-	"errors"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -249,38 +248,6 @@ func TestParsePositiveInt64(t *testing.T) {
 				t.Errorf("parsePositiveInt64(%q) = %d, want %d", tt.input, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestIsUniqueViolation(t *testing.T) {
-	// Use a real database to generate an authentic UNIQUE constraint error.
-	s := newTestServer(t)
-	userID := createTestUser(t, s, "testuser", "testpass1")
-
-	// Insert a feed.
-	_, err := s.db.Exec(
-		"INSERT INTO feeds (user_id, url, title, site_url) VALUES (?, ?, ?, ?)",
-		userID, "https://example.com/feed.xml", "Test Feed", "https://example.com",
-	)
-	if err != nil {
-		t.Fatalf("inserting feed: %v", err)
-	}
-
-	// Insert the same feed again to trigger a UNIQUE constraint violation.
-	_, uniqueErr := s.db.Exec(
-		"INSERT INTO feeds (user_id, url, title, site_url) VALUES (?, ?, ?, ?)",
-		userID, "https://example.com/feed.xml", "Test Feed", "https://example.com",
-	)
-
-	if !isUniqueViolation(uniqueErr) {
-		t.Errorf("isUniqueViolation(UNIQUE error) = false, want true")
-	}
-
-	if isUniqueViolation(errors.New("something else went wrong")) {
-		t.Errorf("isUniqueViolation(unrelated error) = true, want false")
-	}
-	if isUniqueViolation(nil) {
-		t.Errorf("isUniqueViolation(nil) = true, want false")
 	}
 }
 

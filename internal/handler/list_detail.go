@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chrisallenlane/rdr/internal/dbutil"
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
 )
@@ -178,7 +179,7 @@ func (s *Server) handleRenameList(w http.ResponseWriter, r *http.Request) {
 		name, listID, user.ID,
 	)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if dbutil.IsUniqueViolation(err) {
 			if isHTMXRequest(r) {
 				flash(w, r, "A list with that name already exists.")
 				w.WriteHeader(http.StatusUnprocessableEntity)

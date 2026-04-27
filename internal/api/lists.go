@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/chrisallenlane/rdr/internal/dbutil"
 )
 
 // ListLists implements GET /api/v1/lists.
@@ -96,7 +98,7 @@ func (s *Server) CreateList(w http.ResponseWriter, r *http.Request) {
 		uid, name,
 	)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if dbutil.IsUniqueViolation(err) {
 			writeProblem(w, http.StatusConflict, "", "", "a list with that name already exists")
 			return
 		}
@@ -146,7 +148,7 @@ func (s *Server) RenameList(w http.ResponseWriter, r *http.Request, id IDPath) {
 		name, int64(id), uid,
 	)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if dbutil.IsUniqueViolation(err) {
 			writeProblem(w, http.StatusConflict, "", "", "a list with that name already exists")
 			return
 		}

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/chrisallenlane/rdr/internal/dbutil"
 	"github.com/chrisallenlane/rdr/internal/discover"
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
@@ -122,7 +123,7 @@ func (s *Server) handleAddFeed(w http.ResponseWriter, r *http.Request) {
 		user.ID, feedURL,
 	)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if dbutil.IsUniqueViolation(err) {
 			renderErr("You have already added this feed.")
 			return
 		}

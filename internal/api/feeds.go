@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/chrisallenlane/rdr/internal/dbutil"
 	"github.com/chrisallenlane/rdr/internal/discover"
 	"github.com/chrisallenlane/rdr/internal/model"
 	"github.com/chrisallenlane/rdr/internal/poller"
-	sqlite "modernc.org/sqlite"
 )
 
 // listFeedsQuery selects every column needed to build a Feed response,
@@ -125,7 +125,7 @@ func (s *Server) AddFeed(w http.ResponseWriter, r *http.Request) {
 		uid, feedURL,
 	)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if dbutil.IsUniqueViolation(err) {
 			writeProblem(w, http.StatusConflict, "", "",
 				"this feed is already subscribed")
 			return
@@ -274,16 +274,4 @@ func scanFeedRow(row rowScanner) (Feed, error) {
 		}
 	}
 	return f, nil
-}
-
-// isUniqueViolation reports whether err is a SQLite UNIQUE constraint
-// violation. Mirrors the helper in internal/handler — duplicated here
-// to avoid a handler→api dependency cycle. SQLITE_CONSTRAINT_UNIQUE = 2067.
-func isUniqueViolation(err error) bool {
-	var sqliteErr *sqlite.Error
-	if !errors.As(err, &sqliteErr) {
-		return false
-	}
-	const sqliteConstraintUnique = 2067
-	return sqliteErr.Code() == sqliteConstraintUnique
 }

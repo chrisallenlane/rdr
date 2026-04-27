@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chrisallenlane/rdr/internal/dbutil"
 	"github.com/chrisallenlane/rdr/internal/model"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -63,7 +64,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		// UNIQUE constraint violation means duplicate username.
-		if isUniqueViolation(err) {
+		if dbutil.IsUniqueViolation(err) {
 			renderErr("Username is already taken.")
 			return
 		}
