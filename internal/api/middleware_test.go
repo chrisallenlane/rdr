@@ -28,7 +28,7 @@ func freshTokenForUser(t *testing.T, username string) (*sql.DB, int64, string) {
 
 func TestGetMe_ValidToken(t *testing.T) {
 	db, uid, raw := freshTokenForUser(t, "alice")
-	h := New(db)
+	h := New(Config{DB: db})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	req.Header.Set("Authorization", "Bearer "+raw)
@@ -53,7 +53,7 @@ func TestGetMe_ValidToken(t *testing.T) {
 
 func TestBearerAuth_RejectsMissingHeader(t *testing.T) {
 	db := testutil.OpenTestDB(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	rec := httptest.NewRecorder()
@@ -69,7 +69,7 @@ func TestBearerAuth_RejectsMissingHeader(t *testing.T) {
 
 func TestBearerAuth_RejectsMalformedHeader(t *testing.T) {
 	db := testutil.OpenTestDB(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	cases := []string{
 		"token123",           // no scheme
@@ -93,7 +93,7 @@ func TestBearerAuth_RejectsMalformedHeader(t *testing.T) {
 
 func TestBearerAuth_RejectsUnknownToken(t *testing.T) {
 	db := testutil.OpenTestDB(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	req.Header.Set("Authorization", "Bearer "+token.Prefix+strings.Repeat("a", 64))
@@ -112,7 +112,7 @@ func TestBearerAuth_RejectsExpiredToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	h := New(db)
+	h := New(Config{DB: db})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	req.Header.Set("Authorization", "Bearer "+raw)
@@ -126,7 +126,7 @@ func TestBearerAuth_RejectsExpiredToken(t *testing.T) {
 
 func TestBearerAuth_PublicPathsBypass(t *testing.T) {
 	db := testutil.OpenTestDB(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	for _, path := range []string{
 		"/api/v1/healthz",

@@ -12,7 +12,7 @@ import (
 
 func TestHealthz(t *testing.T) {
 	db := testutil.OpenTestDB(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -36,7 +36,7 @@ func TestHealthz(t *testing.T) {
 
 func TestServeSpecYAML(t *testing.T) {
 	db := testutil.OpenTestDB(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/openapi.yaml", nil)
 	rec := httptest.NewRecorder()
@@ -55,7 +55,7 @@ func TestServeSpecYAML(t *testing.T) {
 
 func TestServeSpecJSON(t *testing.T) {
 	db := testutil.OpenTestDB(t)
-	h := New(db)
+	h := New(Config{DB: db})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/openapi.json", nil)
 	rec := httptest.NewRecorder()
