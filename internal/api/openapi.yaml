@@ -26,6 +26,8 @@ tags:
     description: Feed items (articles).
   - name: lists
     description: Lists (user-defined groupings of feeds).
+  - name: search
+    description: Full-text search.
   - name: system
     description: Liveness, spec, and other operational endpoints.
 
@@ -352,6 +354,49 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/search:
+    get:
+      operationId: search
+      summary: Full-text search items
+      description: |
+        Returns FTS5-ranked search results for the caller's items.
+        Snippets are returned in structured form — each snippet is an
+        array of `{text, highlight}` segments — so clients can render
+        highlighting any way they like instead of parsing inline
+        markers.
+
+        The query syntax is FTS5 with the standard set of special
+        characters (`"`, `*`, `(`, `)`) rejected up-front because they
+        produce confusing failure modes for end users. Pagination
+        metadata is in the `Link` and `X-Total-Count` response headers
+        (page size 50, ranked by `rank`).
+      tags: [search]
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string, minLength: 1 }
+          description: Search query.
+        - $ref: "#/components/parameters/PageParam"
+      responses:
+        "200":
+          description: Search results.
+          headers:
+            Link:
+              $ref: "#/components/headers/Link"
+            X-Total-Count:
+              $ref: "#/components/headers/XTotalCount"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SearchResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/items:
     get:
       operationId: listItems
@@ -660,6 +705,67 @@ components:
           format: int64
           minimum: 1
           description: Id of a feed owned by the caller to add to the list.
+
+    SearchResult:
+      type: object
+      required:
+        - id
+        - feed_id
+        - title
+        - url
+        - read
+        - starred
+        - feed_title
+        - title_snippet
+        - content_snippet
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        feed_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        read:
+          type: boolean
+        starred:
+          type: boolean
+        feed_title:
+          type: string
+        title_snippet:
+          type: array
+          description: |
+            Title snippet rendered as `{text, highlight}` segments.
+            `highlight: true` segments correspond to FTS5 match runs.
+          items:
+            $ref: "#/components/schemas/SnippetSegment"
+        content_snippet:
+          type: array
+          description: |
+            Content snippet rendered as `{text, highlight}` segments.
+          items:
+            $ref: "#/components/schemas/SnippetSegment"
+
+    SnippetSegment:
+      type: object
+      required: [text, highlight]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+          description: Plain-text segment (HTML stripped).
+        highlight:
+          type: boolean
+          description: Whether this segment matched the search query.
 
     Item:
       type: object
