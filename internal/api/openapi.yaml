@@ -20,6 +20,8 @@ servers:
 tags:
   - name: identity
     description: Caller-identity endpoints.
+  - name: items
+    description: Feed items (articles).
   - name: system
     description: Liveness, spec, and other operational endpoints.
 
@@ -63,6 +65,131 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/items:
+    get:
+      operationId: listItems
+      summary: List items
+      description: |
+        Returns a paginated list of items belonging to the authenticated
+        user, optionally filtered. Pagination metadata is in the `Link`
+        and `X-Total-Count` response headers.
+      tags: [items]
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - in: query
+          name: feed_id
+          schema: { type: integer, format: int64, minimum: 1 }
+          description: Restrict to a single feed (must belong to the caller).
+        - in: query
+          name: list_id
+          schema: { type: integer, format: int64, minimum: 1 }
+          description: Restrict to feeds in a specific list.
+        - in: query
+          name: unread
+          schema: { type: boolean }
+          description: If true, only return unread items.
+        - in: query
+          name: starred
+          schema: { type: boolean }
+          description: If true, only return starred items.
+      responses:
+        "200":
+          description: Items page. See Link header for pagination.
+          headers:
+            Link:
+              $ref: "#/components/headers/Link"
+            X-Total-Count:
+              $ref: "#/components/headers/XTotalCount"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Item"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/items/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IDPath"
+    get:
+      operationId: getItem
+      summary: Get an item
+      description: |
+        Returns a single item with full sanitized HTML content. 404 if
+        the item does not exist or does not belong to the caller (the
+        two cases are not distinguished).
+      tags: [items]
+      responses:
+        "200":
+          description: The item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/items/{id}/star:
+    parameters:
+      - $ref: "#/components/parameters/IDPath"
+    put:
+      operationId: starItem
+      summary: Star an item
+      description: Marks an item as starred. Idempotent.
+      tags: [items]
+      responses:
+        "204":
+          description: Star applied.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: unstarItem
+      summary: Remove a star from an item
+      description: Removes a star from an item. Idempotent.
+      tags: [items]
+      responses:
+        "204":
+          description: Star removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/items/mark-read:
+    post:
+      operationId: markItemsRead
+      summary: Mark items as read in bulk
+      description: |
+        Marks items as read. With an empty body, marks all of the
+        caller's items as read. With `feed_id` or `list_id` set, the
+        scope is restricted accordingly. The two filters are mutually
+        exclusive.
+      tags: [items]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkReadRequest"
+      responses:
+        "200":
+          description: Mark complete.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarkReadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -100,6 +227,77 @@ components:
           type: string
           format: date-time
           description: When the user account was created.
+
+    Item:
+      type: object
+      required:
+        - id
+        - feed_id
+        - title
+        - url
+        - read
+        - starred
+        - feed_title
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        feed_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+        content:
+          type: string
+          description: Full sanitized HTML body. Omitted from list responses.
+        description:
+          type: string
+          description: Short summary or excerpt (sanitized).
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        read:
+          type: boolean
+        starred:
+          type: boolean
+        feed_title:
+          type: string
+        feed_site_url:
+          type: string
+          format: uri
+        feed_url:
+          type: string
+          format: uri
+
+    MarkReadRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        feed_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Restrict the mark-read to items in this feed.
+        list_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Restrict the mark-read to items in feeds belonging to this list.
+
+    MarkReadResponse:
+      type: object
+      required: [marked]
+      additionalProperties: false
+      properties:
+        marked:
+          type: integer
+          minimum: 0
+          description: Number of items that transitioned from unread to read.
 
     Problem:
       description: |
@@ -150,9 +348,47 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: |
+        The requested resource does not exist or does not belong to the
+        caller. The same status is returned for both so callers cannot
+        enumerate ids belonging to other users.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
     InternalServerError:
       description: An unexpected error occurred.
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+
+  parameters:
+    PageParam:
+      in: query
+      name: page
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: 1-based page index. Page size is 50.
+    IDPath:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      description: Numeric id of the resource.
+
+  headers:
+    Link:
+      schema: { type: string }
+      description: |
+        RFC 5988 link header with `next`, `prev`, `first`, `last` rels
+        as applicable.
+    XTotalCount:
+      schema: { type: integer, minimum: 0 }
+      description: Total number of items matching the query, across all pages.
