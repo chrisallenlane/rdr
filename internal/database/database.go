@@ -1,20 +1,21 @@
-// Package database manages SQLite database connections and schema initialization.
+// Package database manages SQLite database connections and migrations.
 package database
 
 import (
 	"database/sql"
-	_ "embed"
+	"embed"
 	"fmt"
 	"log/slog"
 
+	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
 )
 
-//go:embed schema.sql
-var schema []byte
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 // Open opens a SQLite database at the given path, sets recommended pragmas,
-// initializes the schema on first use, and returns the ready-to-use *sql.DB.
+// applies any pending migrations, and returns the ready-to-use *sql.DB.
 func Open(databasePath string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", databasePath)
 	if err != nil {
@@ -40,43 +41,31 @@ func Open(databasePath string) (*sql.DB, error) {
 	// level avoids SQLITE_BUSY when multiple goroutines access the database.
 	db.SetMaxOpenConns(1)
 
-	if err := initSchema(db); err != nil {
+	if err := runMigrations(db); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("initializing schema: %w", err)
+		return nil, fmt.Errorf("running migrations: %w", err)
 	}
 
 	return db, nil
 }
 
-// initSchema creates all tables on first use. It is a no-op when the schema
-// is already present (detected by checking for the users table).
-func initSchema(db *sql.DB) error {
-	var count int
-	err := db.QueryRow(
-		"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'",
-	).Scan(&count)
-	if err != nil {
-		return fmt.Errorf("checking for users table: %w", err)
-	}
-	if count > 0 {
-		slog.Debug("schema already initialized, skipping")
-		return nil
+// runMigrations applies any pending up migrations from the embedded
+// migrations/ directory. Migrations are up-only by convention; rollback is
+// performed by restoring from backup.
+func runMigrations(db *sql.DB) error {
+	goose.SetBaseFS(migrationsFS)
+	goose.SetLogger(goose.NopLogger())
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		return fmt.Errorf("set dialect: %w", err)
 	}
 
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("beginning schema transaction: %w", err)
+	prev, _ := goose.GetDBVersion(db)
+	if err := goose.Up(db, "migrations"); err != nil {
+		return fmt.Errorf("goose up: %w", err)
 	}
-
-	if _, err := tx.Exec(string(schema)); err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("executing schema: %w", err)
+	curr, _ := goose.GetDBVersion(db)
+	if curr > prev {
+		slog.Info("database migrated", "from", prev, "to", curr)
 	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing schema: %w", err)
-	}
-
-	slog.Info("database schema initialized")
 	return nil
 }
