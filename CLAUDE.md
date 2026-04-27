@@ -18,6 +18,8 @@ make fuzz           # Run fuzz tests (10s each; override with FUZZ_TIME=30s)
 make fmt            # gofmt -s -w .
 make vet            # go vet ./...
 make lint           # golangci-lint (must be installed separately)
+make generate       # Regenerate api/server.gen.go from openapi.yaml
+make lint-spec      # Spectral lint of the OpenAPI document
 ```
 
 ## Key Conventions
@@ -55,6 +57,34 @@ make lint           # golangci-lint (must be installed separately)
   `paginate`, `pageFromQuery`, `pathInt64`, `parsePositiveInt64`,
   `refererPath`, etc.
 - `buildItemFilter` and `itemsHeading` live in `handler/items.go`.
+
+## JSON API
+
+- Spec-first OpenAPI 3.0.3 at `internal/api/openapi.yaml` is the source
+  of truth. `oapi-codegen` generates `internal/api/server.gen.go`
+  (server interface + types). The generated file is committed; CI fails
+  if `go generate ./...` produces a diff.
+- Adding/changing an endpoint: edit `openapi.yaml`, run `make generate`,
+  then implement (or update) the method on `*api.Server` in the
+  matching resource file (`feeds.go`, `lists.go`, `items.go`,
+  `search.go`, etc.). Don't hand-edit `server.gen.go`.
+- Errors are RFC 7807 — emit them via `writeProblem(w, status, type,
+  title, detail)`. Empty `type`/`title` get sensible defaults.
+- Pagination uses `Link` (RFC 5988) + `X-Total-Count` via
+  `writePagination(w, r, total, page)`. Page size constant is
+  `pageSize = 50` in `internal/api/pagination.go`.
+- Bearer auth is enforced at the mux level by `bearerAuth` in
+  `middleware.go`. Public paths are listed in `isPublicAPIPath`. Within
+  a handler, the authenticated user id is read from
+  `userIDFromContext(r.Context())`; a zero return means the bypass list
+  let an unauthenticated request through, which is a programming error
+  — handlers respond 401 in that case rather than crash.
+- IDOR scoping is uniform: foreign-owned resources return 404, never
+  403 or "not found vs forbidden" distinguishing detail.
+- Tests use `testutil.OpenTestDB(t)` plus `token.Generate` to mint a
+  test bearer; `authedRequest(method, target, tok, body)` is the
+  shorthand. To exercise SyncFeeds/SyncStatus or AddFeed, pass them
+  through `api.Config{}` rather than reaching into the package.
 
 ## Manual Testing
 

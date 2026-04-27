@@ -68,20 +68,35 @@ generates `server.gen.go` (server interface + types) into the same
 package; the file is committed and CI verifies it stays in sync with the
 spec. Hand-written code lives alongside:
 
-- `handlers.go` — implements the generated `ServerInterface`
-- `server.go` — `New(db) http.Handler` constructor; mounts `/api/v1/*`
-  and `/api/openapi.{yaml,json}`
+- `server.go` — `New(Config) http.Handler` constructor; mounts
+  `/api/v1/*` and `/api/openapi.{yaml,json}`
+- `middleware.go` — bearer-token auth middleware with public-path bypass
 - `errors.go` — RFC 7807 Problem Details helper
 - `spec.go` — embeds and serves the spec in YAML and JSON
+- `pagination.go` — `Link` (RFC 5988) + `X-Total-Count` helpers
+- One file per resource group: `handlers.go` (healthz, /me),
+  `items.go`, `feeds.go`, `lists.go`, `search.go`
 
 The api handler is mounted from `internal/handler/routes.go` via
-`s.mux.Handle("/api/", api.New(s.db))`. `/api/v1/healthz` is the only
-public endpoint; all others (added in subsequent tickets) require a
-bearer token. Errors are RFC 7807; pagination uses `Link` (RFC 5988)
-plus `X-Total-Count`.
+`s.mux.Handle("/api/", api.New(api.Config{...}))`. The host process
+threads the database, favicons-dir, feed-resolver, and sync hooks in
+through `Config`; closures defer-read the sync hooks at request time so
+the api server picks up `SetSyncFunc`/`SetSyncStatusFunc` calls that
+happen after `NewServer` returns.
+
+`/api/v1/healthz` and the spec endpoints are the only public endpoints;
+everything else requires a bearer token. Tokens (`rdr_pat_<64 hex>`)
+are minted via the Settings page, SHA-256 hashed in `api_tokens`, and
+validated by `internal/token`. IDOR scoping is enforced uniformly — a
+foreign id returns 404, never differentiating from "id does not exist."
+
+Errors are RFC 7807 (`application/problem+json`); pagination uses
+`Link` (RFC 5988) plus `X-Total-Count`; page size is 50.
 
 To add a new endpoint: edit `openapi.yaml`, run `make generate`, then
-implement the new method on `*api.Server` in `handlers.go`.
+implement the new method on `*api.Server` in the resource file. See
+[HACKING.md](HACKING.md) for the full add-endpoint workflow and
+[API.md](API.md) for client-facing documentation.
 
 ## Request Flow
 
@@ -132,13 +147,22 @@ When an item is viewed, its content passes through three sanitization steps:
 
 ## Authentication
 
-Session-based with bcrypt password hashing. Sessions are stored in the
-database with an expiration timestamp. The session cookie is HttpOnly,
-SameSite=Lax, and Secure when the request arrived over TLS (including
-`X-Forwarded-Proto: https` from a reverse proxy). There is no "remember me"
--- sessions last 30 days. A bcrypt decoy comparison is performed on failed
-login when the username does not exist, to close the timing side-channel that
-would otherwise allow username enumeration.
+The HTML UI uses session-based auth with bcrypt password hashing.
+Sessions are stored in the database with an expiration timestamp. The
+session cookie is HttpOnly, SameSite=Lax, and Secure when the request
+arrived over TLS (including `X-Forwarded-Proto: https` from a reverse
+proxy). There is no "remember me" — sessions last 30 days. A bcrypt
+decoy comparison is performed on failed login when the username does
+not exist, to close the timing side-channel that would otherwise allow
+username enumeration.
+
+The JSON API uses bearer tokens (`rdr_pat_<64 hex chars>`) minted from
+**Settings → API Tokens**. The full token is shown once at creation;
+only a SHA-256 hash is stored in `api_tokens`. Validation is uniform —
+unknown, malformed, and expired tokens all return the same 401 problem
+detail so callers cannot enumerate token state. `last_used_at` is the
+only audit signal; there is no per-token scoping or rate limiting (the
+threat model is homelab/trusted-network).
 
 ## Testing
 

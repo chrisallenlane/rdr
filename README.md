@@ -22,6 +22,7 @@ shortcuts as a progressive enhancement — everything works without it.
 - Full-text search across all items (SQLite FTS5)
 - Feed organization with lists (a feed belongs to one list)
 - OPML import and export (lists exported as folders)
+- JSON HTTP API with bearer-token auth — see [API.md](API.md)
 - Four themes: Solarized Light/Dark and Modus Light/Dark (WCAG AAA high-contrast)
 - Per-user settings: date display format (relative or absolute), item description previews
 - Background feed polling with configurable interval
