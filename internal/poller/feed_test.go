@@ -56,6 +56,63 @@ func TestItemGUID(t *testing.T) {
 	}
 }
 
+func TestResolveLink(t *testing.T) {
+	tests := []struct {
+		name             string
+		link, base, fall string
+		want             string
+	}{
+		{
+			name: "empty link returns empty",
+			link: "", base: "https://example.com/", fall: "https://example.com/feed",
+			want: "",
+		},
+		{
+			name: "absolute link returned unchanged",
+			link: "https://example.com/post", base: "https://other.example.com/", fall: "",
+			want: "https://example.com/post",
+		},
+		{
+			name: "absolute path resolved against base",
+			link: "/article/123/foo", base: "http://www.shacknews.com/", fall: "",
+			want: "http://www.shacknews.com/article/123/foo",
+		},
+		{
+			name: "relative path resolved against base directory",
+			link: "post/123", base: "https://example.com/blog/", fall: "",
+			want: "https://example.com/blog/post/123",
+		},
+		{
+			name: "base without trailing slash and absolute path",
+			link: "/foo", base: "https://example.com", fall: "",
+			want: "https://example.com/foo",
+		},
+		{
+			name: "falls back when base is empty",
+			link: "/foo", base: "", fall: "https://example.com/feed.xml",
+			want: "https://example.com/foo",
+		},
+		{
+			name: "falls back when base is itself relative",
+			link: "/foo", base: "/relative/base", fall: "https://example.com/feed.xml",
+			want: "https://example.com/foo",
+		},
+		{
+			name: "no usable base returns link unchanged",
+			link: "/foo", base: "", fall: "",
+			want: "/foo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveLink(tt.link, tt.base, tt.fall); got != tt.want {
+				t.Errorf("resolveLink(%q, %q, %q) = %q, want %q", tt.link, tt.base, tt.fall, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestItemPublishedAt(t *testing.T) {
 	pub := time.Date(2024, 3, 10, 12, 0, 0, 0, time.UTC)
 	upd := time.Date(2024, 3, 11, 8, 30, 0, 0, time.UTC)
@@ -235,6 +292,135 @@ func TestFetchAndStoreFeed_ContentFallback(t *testing.T) {
 			t.Errorf("content = %q, want %q", content, "This is the description text")
 		}
 	})
+}
+
+func TestFetchAndStoreFeed_RelativeURLResolution(t *testing.T) {
+	// Models the Shacknews case: channel <link> is absolute, item <link>
+	// values are relative paths. After ingest, items.url and feeds.site_url
+	// should both be absolute.
+	db := testutil.OpenTestDB(t)
+	userID := testutil.InsertUser(t, db, "alice")
+
+	rssFeed := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Relative Links Feed</title>
+    <link>http://www.shacknews.com/</link>
+    <item>
+      <guid>guid-rel-abs-path</guid>
+      <title>Relative item, absolute path</title>
+      <link>/article/148856/valve-steam-controller-dev-interview</link>
+    </item>
+    <item>
+      <guid>guid-already-absolute</guid>
+      <title>Item with absolute link</title>
+      <link>https://example.com/post/1</link>
+    </item>
+  </channel>
+</rss>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		if _, err := fmt.Fprint(w, rssFeed); err != nil {
+			http.Error(w, "write error", http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	res, err := db.Exec(
+		`INSERT INTO feeds (user_id, url, title) VALUES (?, ?, ?)`,
+		userID, srv.URL, "Relative Links Feed",
+	)
+	if err != nil {
+		t.Fatalf("inserting feed: %v", err)
+	}
+	feedID, _ := res.LastInsertId()
+	feed := &model.Feed{ID: feedID, UserID: userID, URL: srv.URL}
+
+	if err := FetchAndStoreFeed(context.Background(), db, feed, ""); err != nil {
+		t.Fatalf("FetchAndStoreFeed: %v", err)
+	}
+
+	cases := []struct{ guid, want string }{
+		{"guid-rel-abs-path", "http://www.shacknews.com/article/148856/valve-steam-controller-dev-interview"},
+		{"guid-already-absolute", "https://example.com/post/1"},
+	}
+	for _, c := range cases {
+		var got string
+		if err := db.QueryRow(
+			`SELECT url FROM items WHERE feed_id = ? AND guid = ?`, feedID, c.guid,
+		).Scan(&got); err != nil {
+			t.Fatalf("querying %s: %v", c.guid, err)
+		}
+		if got != c.want {
+			t.Errorf("items.url for %s = %q, want %q", c.guid, got, c.want)
+		}
+	}
+
+	// site_url should still be the (already-absolute) channel link.
+	var siteURL string
+	if err := db.QueryRow(`SELECT site_url FROM feeds WHERE id = ?`, feedID).Scan(&siteURL); err != nil {
+		t.Fatalf("querying site_url: %v", err)
+	}
+	if siteURL != "http://www.shacknews.com/" {
+		t.Errorf("site_url = %q, want %q", siteURL, "http://www.shacknews.com/")
+	}
+}
+
+func TestFetchAndStoreFeed_RelativeChannelLink(t *testing.T) {
+	// Channel <link> is itself relative; site_url should be resolved against
+	// the feed's fetch URL.
+	db := testutil.OpenTestDB(t)
+	userID := testutil.InsertUser(t, db, "alice")
+
+	rssFeed := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Bad Channel Link</title>
+    <link>/</link>
+    <item>
+      <guid>guid-1</guid>
+      <title>Item 1</title>
+      <link>/post/1</link>
+    </item>
+  </channel>
+</rss>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		if _, err := fmt.Fprint(w, rssFeed); err != nil {
+			http.Error(w, "write error", http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	res, err := db.Exec(
+		`INSERT INTO feeds (user_id, url, title) VALUES (?, ?, ?)`,
+		userID, srv.URL+"/feed.xml", "Bad Channel Link",
+	)
+	if err != nil {
+		t.Fatalf("inserting feed: %v", err)
+	}
+	feedID, _ := res.LastInsertId()
+	feed := &model.Feed{ID: feedID, UserID: userID, URL: srv.URL + "/feed.xml"}
+
+	if err := FetchAndStoreFeed(context.Background(), db, feed, ""); err != nil {
+		t.Fatalf("FetchAndStoreFeed: %v", err)
+	}
+
+	var siteURL, itemURL string
+	if err := db.QueryRow(`SELECT site_url FROM feeds WHERE id = ?`, feedID).Scan(&siteURL); err != nil {
+		t.Fatalf("querying site_url: %v", err)
+	}
+	if want := srv.URL + "/"; siteURL != want {
+		t.Errorf("site_url = %q, want %q", siteURL, want)
+	}
+	if err := db.QueryRow(`SELECT url FROM items WHERE feed_id = ? AND guid = ?`, feedID, "guid-1").Scan(&itemURL); err != nil {
+		t.Fatalf("querying item url: %v", err)
+	}
+	if want := srv.URL + "/post/1"; itemURL != want {
+		t.Errorf("items.url = %q, want %q", itemURL, want)
+	}
 }
 
 func TestFetchAndStoreFeed_MediaRSS(t *testing.T) {

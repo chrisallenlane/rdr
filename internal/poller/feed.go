@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/chrisallenlane/rdr/internal/favicon"
 	"github.com/chrisallenlane/rdr/internal/httpclient"
@@ -51,12 +52,16 @@ func FetchAndStoreFeed(ctx context.Context, db *sql.DB, feed *model.Feed, favico
 		return fmt.Errorf("parsing %s: %w", feed.URL, err)
 	}
 
+	// Resolve the channel link against the feed URL so off-spec feeds that
+	// publish a relative <link> still produce an absolute site_url.
+	siteURL := resolveLink(parsed.Link, feed.URL, "")
+
 	// Update feed metadata and clear error state.
 	if _, err := db.Exec(
 		`UPDATE feeds SET title = ?, site_url = ?, last_fetched_at = ?,
 		        last_fetch_error = '', consecutive_failures = 0
 		 WHERE id = ?`,
-		parsed.Title, parsed.Link, model.FormatNow(), feed.ID,
+		parsed.Title, siteURL, model.FormatNow(), feed.ID,
 	); err != nil {
 		return fmt.Errorf("updating metadata for %s: %w", feed.URL, err)
 	}
@@ -77,10 +82,12 @@ func FetchAndStoreFeed(ctx context.Context, db *sql.DB, feed *model.Feed, favico
 			}
 		}
 
+		itemURL := resolveLink(item.Link, siteURL, feed.URL)
+
 		if _, err := db.Exec(
 			`INSERT OR IGNORE INTO items (feed_id, guid, title, content, description, url, published_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			feed.ID, itemGUID(item), item.Title, content, description, item.Link, itemPublishedAt(item),
+			feed.ID, itemGUID(item), item.Title, content, description, itemURL, itemPublishedAt(item),
 		); err != nil {
 			return fmt.Errorf("storing item for %s: %w", feed.URL, err)
 		}
@@ -104,6 +111,34 @@ func recordFetchFailure(db *sql.DB, feedID int64, errMsg string) {
 	); err != nil {
 		slog.Error("recording fetch failure", "feed_id", feedID, "error", err)
 	}
+}
+
+// resolveLink returns an absolute URL from a possibly-relative feed link.
+// If link is already absolute it is returned unchanged. Otherwise it is
+// resolved against the first absolute base in (base, fallback). When no
+// base is available the original link is returned best-effort.
+func resolveLink(link, base, fallback string) string {
+	if link == "" {
+		return ""
+	}
+	u, err := url.Parse(link)
+	if err != nil {
+		return link
+	}
+	if u.IsAbs() {
+		return link
+	}
+	for _, b := range []string{base, fallback} {
+		if b == "" {
+			continue
+		}
+		baseURL, err := url.Parse(b)
+		if err != nil || !baseURL.IsAbs() {
+			continue
+		}
+		return baseURL.ResolveReference(u).String()
+	}
+	return link
 }
 
 // itemGUID determines the GUID for a feed item, falling back through
