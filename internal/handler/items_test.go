@@ -689,3 +689,203 @@ func TestHandleMarkRead_ByList(t *testing.T) {
 		t.Errorf("feed 2 (not in list) unread count = %d, want 1", unreadCount)
 	}
 }
+
+// TestHandleMarkRead_StarredFilterDroppedBug exercises the scenario where a
+// user is viewing /items?starred=1 and clicks "mark all as read". The form
+// in templates/partials/items_section.html only submits feed= and list=
+// hidden inputs, so the starred filter from the URL is silently dropped
+// and the handler marks ALL unread items account-wide rather than only
+// the starred-and-unread items that were visible.
+//
+// Expected (correct) behavior: only starred items get marked read.
+// Actual (buggy) behavior: all unread items get marked read.
+func TestHandleMarkRead_StarredFilterDroppedBug(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "testuser", "testpass1")
+
+	if _, err := s.db.Exec(
+		"INSERT INTO feeds (id, user_id, url, title) VALUES (?, ?, ?, ?)",
+		1, userID, "https://example.com/feed", "Test Feed",
+	); err != nil {
+		t.Fatalf("inserting feed: %v", err)
+	}
+
+	// Item 1: starred AND unread — this is what the user sees on /items?starred=1
+	// Item 2: NOT starred, unread — should be untouched by a "mark all read"
+	//         issued from the starred-only view.
+	rows := []struct {
+		id      int
+		guid    string
+		read    int
+		starred int
+	}{
+		{1, "starred-unread", 0, 1},
+		{2, "plain-unread", 0, 0},
+	}
+	for _, row := range rows {
+		if _, err := s.db.Exec(
+			`INSERT INTO items (id, feed_id, guid, title, read, starred, published_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			row.id, 1, row.guid, "Item", row.read, row.starred, "2024-01-01 00:00:00",
+		); err != nil {
+			t.Fatalf("inserting item %d: %v", row.id, err)
+		}
+	}
+
+	// Simulate the form payload that templates/partials/items_section.html
+	// emits when the user is on /items?starred=1: feed= and list= hidden
+	// inputs are empty because no feed/list filter is active, and the
+	// `starred` filter from the URL is NOT carried over.
+	form := url.Values{}
+	req := authedRequest(t, s, userID, http.MethodPost, "/items/mark-read")
+	req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// Set Referer to the starred-filtered view so a future fix has a signal
+	// to read filters from if it wants to (currently the handler ignores it).
+	req.Header.Set("Referer", "http://example.test/items?starred=1")
+
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body=%q", rec.Code, http.StatusSeeOther, rec.Body.String())
+	}
+
+	// Item 1 (starred) should be marked read — that's what the user wanted.
+	var item1Read int
+	if err := s.db.QueryRow("SELECT read FROM items WHERE id = 1").Scan(&item1Read); err != nil {
+		t.Fatalf("querying item 1: %v", err)
+	}
+	if item1Read != 1 {
+		t.Errorf("item 1 (starred, visible) read = %d, want 1", item1Read)
+	}
+
+	// Item 2 (NOT starred) should still be unread — the user was on
+	// starred-only view and never asked to mark plain items as read.
+	var item2Read int
+	if err := s.db.QueryRow("SELECT read FROM items WHERE id = 2").Scan(&item2Read); err != nil {
+		t.Fatalf("querying item 2: %v", err)
+	}
+	if item2Read != 0 {
+		t.Errorf("item 2 (NOT starred, not visible on /items?starred=1) read = %d, want 0 (BUG: starred filter dropped, all unread marked)", item2Read)
+	}
+}
+
+// TestHandleMarkRead_UnreadFilterIsBenign verifies that on /items?unread=1,
+// "mark all as read" correctly marks the visible items. This is a sanity
+// check — the unread filter is effectively redundant with the read=0
+// scoping in the UPDATE itself, so dropping it on the form submit is
+// harmless. Kept as coverage so future refactors don't break this case.
+func TestHandleMarkRead_UnreadFilterIsBenign(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "testuser", "testpass1")
+
+	if _, err := s.db.Exec(
+		"INSERT INTO feeds (id, user_id, url, title) VALUES (?, ?, ?, ?)",
+		1, userID, "https://example.com/feed", "Test Feed",
+	); err != nil {
+		t.Fatalf("inserting feed: %v", err)
+	}
+
+	rows := []struct {
+		id   int
+		guid string
+		read int
+	}{
+		{1, "unread1", 0},
+		{2, "unread2", 0},
+		{3, "alreadyread", 1},
+	}
+	for _, row := range rows {
+		if _, err := s.db.Exec(
+			`INSERT INTO items (id, feed_id, guid, title, read, published_at)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			row.id, 1, row.guid, "Item", row.read, "2024-01-01 00:00:00",
+		); err != nil {
+			t.Fatalf("inserting item %d: %v", row.id, err)
+		}
+	}
+
+	form := url.Values{}
+	req := authedRequest(t, s, userID, http.MethodPost, "/items/mark-read")
+	req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Referer", "http://example.test/items?unread=1")
+
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+
+	// All previously-unread items should now be read; the already-read item
+	// stays as-is.
+	var unread int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM items i JOIN feeds f ON i.feed_id = f.id
+		 WHERE f.user_id = ? AND i.read = 0`, userID,
+	).Scan(&unread); err != nil {
+		t.Fatalf("counting unread: %v", err)
+	}
+	if unread != 0 {
+		t.Errorf("unread = %d, want 0", unread)
+	}
+}
+
+// TestHandleMarkRead_StarredFilterCombinedWithFeed proves that the bug
+// is independent of the feed filter. On /items?feed=1&starred=1, the
+// form still drops the starred filter and marks ALL unread items in
+// feed 1, including the non-starred ones.
+func TestHandleMarkRead_StarredFilterCombinedWithFeed(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "testuser", "testpass1")
+
+	if _, err := s.db.Exec(
+		"INSERT INTO feeds (id, user_id, url, title) VALUES (?, ?, ?, ?)",
+		1, userID, "https://example.com/feed", "Test Feed",
+	); err != nil {
+		t.Fatalf("inserting feed: %v", err)
+	}
+
+	rows := []struct {
+		id      int
+		guid    string
+		read    int
+		starred int
+	}{
+		{1, "starred-unread", 0, 1},
+		{2, "plain-unread", 0, 0},
+	}
+	for _, row := range rows {
+		if _, err := s.db.Exec(
+			`INSERT INTO items (id, feed_id, guid, title, read, starred, published_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			row.id, 1, row.guid, "Item", row.read, row.starred, "2024-01-01 00:00:00",
+		); err != nil {
+			t.Fatalf("inserting item %d: %v", row.id, err)
+		}
+	}
+
+	// Form submits feed=1 (carried over from URL) but NOT starred=1.
+	form := url.Values{"feed": {"1"}}
+	req := authedRequest(t, s, userID, http.MethodPost, "/items/mark-read")
+	req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Referer", "http://example.test/items?feed=1&starred=1")
+
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+
+	var item2Read int
+	if err := s.db.QueryRow("SELECT read FROM items WHERE id = 2").Scan(&item2Read); err != nil {
+		t.Fatalf("querying item 2: %v", err)
+	}
+	if item2Read != 0 {
+		t.Errorf("item 2 (feed 1, NOT starred, hidden on starred-only view) read = %d, want 0 (BUG: starred filter dropped)", item2Read)
+	}
+}

@@ -2,7 +2,9 @@ package handler
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -1068,6 +1070,110 @@ func TestHandleImportOPML_HTTPScheme(t *testing.T) {
 	}
 	if count != 2 {
 		t.Errorf("feed count = %d, want 2 (both http and https)", count)
+	}
+}
+
+// TestResolveListID_TOCTOU_SilentNullFallback documents the structural
+// TOCTOU in resolveListID (internal/handler/opml.go). The resolver runs
+// two separate statements:
+//
+//	INSERT OR IGNORE INTO lists (user_id, name) VALUES (?, ?)
+//	SELECT id        FROM lists WHERE user_id = ? AND name = ?
+//
+// If the list row is deleted between those two statements (concurrent
+// DELETE from another request), the SELECT returns sql.ErrNoRows.
+// resolveListID then returns the error; handleImportOPML logs it and
+// falls through to listID = nil, silently importing the feed with
+// list_id = NULL.
+//
+// This is structurally a bug but practically unfireable: rdr is a
+// single-user homelab app, the race window is microseconds, and the
+// only way to trigger it is concurrent OPML-import + DELETE-list
+// requests from the same user. Logged as a low-severity finding for
+// awareness; this test pins the SQL-level behavior the production
+// code relies on.
+//
+// Contrast with api/lists.go AddFeedToList, which explicitly folds the
+// ownership check into a single statement via a subquery, citing TOCTOU
+// avoidance. The OPML handler diverges from that established pattern.
+func TestResolveListID_TOCTOU_SilentNullFallback(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "testuser", "testpass1")
+
+	// Step 1: INSERT OR IGNORE — succeeds, creates the list row.
+	if _, err := s.db.Exec(
+		"INSERT OR IGNORE INTO lists (user_id, name) VALUES (?, ?)",
+		userID, "Tech",
+	); err != nil {
+		t.Fatalf("INSERT OR IGNORE lists: %v", err)
+	}
+
+	// Step 2 (injected): concurrent DELETE — simulates the racing
+	// request that lands between the two statements of resolveListID.
+	if _, err := s.db.Exec(
+		"DELETE FROM lists WHERE user_id = ? AND name = ?",
+		userID, "Tech",
+	); err != nil {
+		t.Fatalf("racing DELETE lists: %v", err)
+	}
+
+	// Step 3: SELECT id — production code expects to find the just-
+	// inserted row, but the racing DELETE has removed it. SELECT
+	// returns sql.ErrNoRows. The handler logs this and uses listID=nil.
+	var id int64
+	err := s.db.QueryRow(
+		"SELECT id FROM lists WHERE user_id = ? AND name = ?",
+		userID, "Tech",
+	).Scan(&id)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("SELECT id: err = %v, want sql.ErrNoRows", err)
+	}
+
+	// Step 4: insert a feed mimicking the surviving handler path —
+	// listID is nil because resolveListID errored. The feed is
+	// silently saved with list_id = NULL.
+	if _, err := s.db.Exec(
+		"INSERT INTO feeds (user_id, url, title) VALUES (?, ?, ?)",
+		userID, "https://example.com/feed.xml", "Example",
+	); err != nil {
+		t.Fatalf("INSERT feed: %v", err)
+	}
+	var nullCount int
+	if err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM feeds WHERE user_id = ? AND list_id IS NULL",
+		userID,
+	).Scan(&nullCount); err != nil {
+		t.Fatalf("counting feeds with NULL list_id: %v", err)
+	}
+	if nullCount != 1 {
+		t.Errorf("feeds with list_id=NULL = %d, want 1 (silent fallback)", nullCount)
+	}
+
+	// Sanity: an INSERT ... RETURNING id pattern (the recommended fix)
+	// is atomic and would never observe this state — the row either
+	// exists at end-of-statement with its id, or the statement
+	// reports failure. Demonstrate that the database supports the
+	// fix without modification to production code.
+	if _, err := s.db.Exec(
+		"INSERT OR IGNORE INTO lists (user_id, name) VALUES (?, ?)",
+		userID, "Tech",
+	); err != nil {
+		t.Fatalf("re-INSERT for RETURNING demo: %v", err)
+	}
+	var atomicID int64
+	if err := s.db.QueryRow(
+		// modernc.org/sqlite supports INSERT ... ON CONFLICT ... RETURNING
+		// (SQLite >= 3.35). A single-statement upsert eliminates the
+		// race window entirely.
+		"INSERT INTO lists (user_id, name) VALUES (?, ?) "+
+			"ON CONFLICT(user_id, name) DO UPDATE SET name = name "+
+			"RETURNING id",
+		userID, "Tech",
+	).Scan(&atomicID); err != nil {
+		t.Fatalf("atomic upsert RETURNING id: %v", err)
+	}
+	if atomicID == 0 {
+		t.Errorf("atomic upsert returned id=0")
 	}
 }
 

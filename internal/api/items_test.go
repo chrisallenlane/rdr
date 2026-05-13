@@ -419,3 +419,119 @@ func TestMarkRead_FilterByList(t *testing.T) {
 		t.Errorf("bob cross-user: marked=%d, want 0", resp.Marked)
 	}
 }
+
+// TestMarkRead_NoStarredFilterSupport documents the parallel bug on
+// the JSON API path: MarkReadRequest accepts feed_id XOR list_id but
+// has no `starred` (or `unread`) field. An API client that uses
+// GET /api/v1/items?starred=true to fetch starred items and then issues
+// POST /api/v1/items/mark-read with no filter (the only no-arg call the
+// schema permits) marks ALL unread items account-wide, including
+// non-starred items the client never saw.
+//
+// The schema is strict (additionalProperties: false plus
+// DisallowUnknownFields), so a client cannot even attempt to send
+// {"starred": true} — the request 400s. There is *no way* to scope
+// mark-read to starred items via the API. The test asserts the
+// behavior we want: marking only starred items should be possible and
+// non-starred items must remain unread.
+//
+// Current behavior: the only call available is "no body" / "empty body",
+// which marks all unread items account-wide. Test fails because item 2
+// (unread, not starred) ends up read.
+func TestMarkRead_NoStarredFilterSupport(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	alice := testutil.InsertUser(t, db, "alice")
+
+	res, err := db.Exec(
+		`INSERT INTO feeds (user_id, url, title) VALUES (?, ?, ?)`,
+		alice, "https://alice.example/feed", "Alice Blog",
+	)
+	if err != nil {
+		t.Fatalf("insert feed: %v", err)
+	}
+	aliceFeed, _ := res.LastInsertId()
+
+	// Two items:
+	//   - "starred-unread": unread AND starred — the only item that
+	//      GET /api/v1/items?starred=true returns.
+	//   - "plain-unread":   unread, NOT starred — invisible on the
+	//      starred view, must NOT be marked read.
+	rows := []struct {
+		guid    string
+		read    int
+		starred int
+	}{
+		{"starred-unread", 0, 1},
+		{"plain-unread", 0, 0},
+	}
+	for _, row := range rows {
+		if _, err := db.Exec(
+			`INSERT INTO items (feed_id, guid, title, read, starred, published_at)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			aliceFeed, row.guid, "Item", row.read, row.starred,
+			time.Now().Format(time.RFC3339),
+		); err != nil {
+			t.Fatalf("insert item %s: %v", row.guid, err)
+		}
+	}
+
+	aliceTok, _, err := token.Generate(db, alice, "alice-test", time.Time{})
+	if err != nil {
+		t.Fatalf("token: %v", err)
+	}
+
+	h := New(Config{DB: db})
+
+	// Confirm GET /api/v1/items?starred=true returns only the starred item.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodGet, "/api/v1/items?starred=true", aliceTok, ""))
+	var visible []Item
+	_ = json.Unmarshal(rec.Body.Bytes(), &visible)
+	if len(visible) != 1 {
+		t.Fatalf("GET /api/v1/items?starred=true: got %d items, want 1", len(visible))
+	}
+
+	// Mark-read with empty body — the only no-filter call the schema
+	// permits (and the only way a client viewing the starred-only list
+	// can mark "what they see" as read).
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/v1/items/mark-read",
+		aliceTok, "{}"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("mark-read: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	// The non-starred item must still be unread — the client only
+	// "saw" the starred item and (logically) only intended to clear
+	// that one.
+	var item2Read int
+	if err := db.QueryRow(
+		`SELECT read FROM items WHERE guid = 'plain-unread'`,
+	).Scan(&item2Read); err != nil {
+		t.Fatalf("query plain-unread: %v", err)
+	}
+	if item2Read != 0 {
+		t.Errorf("non-starred item read = %d, want 0 (BUG: API offers no starred filter on mark-read; empty body marks ALL unread account-wide)", item2Read)
+	}
+}
+
+// TestMarkRead_StarredBodyRejected documents that the strict-mode JSON
+// decoder rejects any attempt by a client to scope mark-read by starred
+// state — proving there is no API-level path to do this. This is paired
+// with TestMarkRead_NoStarredFilterSupport: together they show the bug
+// is structural (the schema is missing the field), not just an
+// implementation oversight.
+func TestMarkRead_StarredBodyRejected(t *testing.T) {
+	db, aliceTok, _, _, _ := itemFixture(t)
+	h := New(Config{DB: db})
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/v1/items/mark-read",
+		aliceTok, `{"starred": true}`))
+	// 400 today, because DisallowUnknownFields trips on "starred". If a
+	// future commit adds the field to MarkReadRequest, this test must be
+	// updated to assert correct filtering instead.
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status=%d, want 400 (current schema has no `starred` field on MarkReadRequest)", rec.Code)
+	}
+}

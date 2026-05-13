@@ -415,6 +415,369 @@ func TestResolveRelativeURLs(t *testing.T) {
 	}
 }
 
+// TestResolveRelativeURLs_UnsafeBaseURL exercises ResolveRelativeURLs
+// with a base URL that itself carries a dangerous scheme. This case
+// can occur in production when items.url contains a javascript:,
+// data:, or file: URL — the ingest path (resolveLink in
+// internal/poller/feed.go) does NOT validate URL schemes, so any
+// absolute URL is stored verbatim and later passed as the base when
+// rendering item content.
+//
+// The function does not crash, and its output IS NOT directly safe —
+// it produces strings like `src="javascript:///images/foo.png"`
+// inside the HTML it returns. Defense-in-depth comes from the
+// downstream sanitize.HTML call (bluemonday UGCPolicy), which strips
+// hrefs/srcs with non-allow-listed schemes.
+//
+// The cross-pipeline assertion in TestResolveRelativeURLs_UnsafeBaseURL_FullPipeline
+// confirms the full chain — ResolveRelativeURLs → HTML — produces
+// output free of executable URL schemes. The standalone tests here
+// pin the intermediate (unsanitized) output so a future change that
+// alters the pipeline order is forced to re-prove safety.
+func TestResolveRelativeURLs_UnsafeBaseURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		baseURL  string
+		contains []string
+	}{
+		{
+			name:    "javascript base + relative src produces javascript-scheme URL",
+			content: `<img src="images/foo.png">`,
+			baseURL: "javascript:alert(1)",
+			// url.URL.ResolveReference with an opaque base produces
+			// "javascript:///images/foo.png". Pinning this so any
+			// change to the resolver is visible.
+			contains: []string{`javascript:///images/foo.png`},
+		},
+		{
+			name:     "javascript base + absolute-path href",
+			content:  `<a href="/page.html">x</a>`,
+			baseURL:  "javascript:foo",
+			contains: []string{`javascript:///page.html`},
+		},
+		{
+			name:     "data base + relative src",
+			content:  `<img src="x.png">`,
+			baseURL:  "data:text/html,<b>x</b>",
+			contains: []string{`data:///x.png`},
+		},
+		{
+			name:     "file base + relative src",
+			content:  `<img src="x.png">`,
+			baseURL:  "file:///etc/passwd",
+			contains: []string{`file:///etc/x.png`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveRelativeURLs(tt.content, tt.baseURL)
+			for _, want := range tt.contains {
+				if !strings.Contains(got, want) {
+					t.Errorf(
+						"ResolveRelativeURLs(%q, %q) = %q, want substring %q",
+						tt.content, tt.baseURL, got, want,
+					)
+				}
+			}
+		})
+	}
+}
+
+// TestResolveRelativeURLs_UnsafeBaseURL_FullPipeline exercises the
+// production sequence (handler/item_detail.go:105-106):
+//
+//	content := sanitize.ResolveRelativeURLs(item.Content, item.URL)
+//	content = string(sanitize.HTML(content))
+//
+// when item.URL carries a dangerous scheme. The contract: the final
+// HTML produced by this pipeline MUST NOT contain executable href or
+// src attribute values pointing at javascript:, data:, file:, or
+// vbscript: schemes.
+//
+// This is a defense-in-depth assertion — even if resolveLink (the
+// ingest-time validation) never gains a scheme allow-list, the
+// downstream HTML sanitizer is the safety net.
+func TestResolveRelativeURLs_UnsafeBaseURL_FullPipeline(t *testing.T) {
+	cases := []struct {
+		name, content, base string
+	}{
+		{
+			name:    "javascript base, relative img",
+			content: `<p>see <img src="img.png"> here</p>`,
+			base:    "javascript:alert(1)",
+		},
+		{
+			name:    "javascript base, relative anchor",
+			content: `<p><a href="page.html">click</a></p>`,
+			base:    "javascript:alert(1)",
+		},
+		{
+			name:    "data base, relative img",
+			content: `<p><img src="img.png"></p>`,
+			base:    "data:text/html,<b>x</b>",
+		},
+		{
+			name:    "file base, relative anchor",
+			content: `<p><a href="page.html">x</a></p>`,
+			base:    "file:///etc/passwd",
+		},
+		{
+			name:    "vbscript-looking base (parses as scheme), relative img",
+			content: `<p><img src="img.png"></p>`,
+			base:    "vbscript:msgbox(1)",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resolved := ResolveRelativeURLs(tc.content, tc.base)
+			final := string(HTML(resolved))
+			lower := strings.ToLower(final)
+			// None of the dangerous schemes may appear in a finished
+			// href or src attribute value.
+			for _, scheme := range []string{"javascript", "data", "file", "vbscript"} {
+				bad := []string{
+					`href="` + scheme + `:`,
+					`href='` + scheme + `:`,
+					`src="` + scheme + `:`,
+					`src='` + scheme + `:`,
+				}
+				for _, b := range bad {
+					if strings.Contains(lower, b) {
+						t.Errorf(
+							"pipeline produced unsafe attribute %q\n  base=%q\n  content=%q\n  final=%q",
+							b, tc.base, tc.content, final,
+						)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestResolveRelativeURLs_AttributeQuoting probes the regex used by
+// ResolveRelativeURLs (`(src|href)="([^"]*)"`) against attribute-quoting
+// styles that real-world HTML emits but the regex does not match.
+//
+// The intent of these tests is to PIN the limitation: feeds that emit
+// any quoting style other than double-quoted attributes are silently
+// skipped by ResolveRelativeURLs, leaving relative URLs unresolved in
+// the rendered article. This is a UX bug (broken images / dead links),
+// not a security bug — the downstream bluemonday sanitizer enforces
+// scheme allow-lists.
+//
+// Fix guidance: replace the regex with a proper HTML parser
+// (golang.org/x/net/html). The parser normalises attribute syntax and
+// would correctly handle every case below.
+func TestResolveRelativeURLs_AttributeQuoting(t *testing.T) {
+	const base = "https://example.com/blog/post"
+	const wantResolved = "https://example.com/blog/images/foo.png"
+
+	tests := []struct {
+		name        string
+		content     string
+		wantResolve bool // true if a properly-quoted attribute resolves
+		note        string
+	}{
+		{
+			name:        "double-quoted src (regex matches)",
+			content:     `<img src="images/foo.png">`,
+			wantResolve: true,
+			note:        "control: baseline behaviour",
+		},
+		{
+			name:        "single-quoted src",
+			content:     `<img src='images/foo.png'>`,
+			wantResolve: true,
+			note:        "feeds using single quotes are silently skipped",
+		},
+		{
+			name:        "unquoted src",
+			content:     `<img src=images/foo.png>`,
+			wantResolve: true,
+			note:        "HTML5 allows unquoted attribute values",
+		},
+		{
+			name:        "single-quoted href",
+			content:     `<a href='images/foo.png'>x</a>`,
+			wantResolve: true,
+			note:        "same problem for href",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveRelativeURLs(tt.content, base)
+			resolved := strings.Contains(got, wantResolved)
+			if tt.wantResolve && !resolved {
+				t.Errorf(
+					"ResolveRelativeURLs(%q) = %q; expected to contain %q (note: %s)",
+					tt.content, got, wantResolved, tt.note,
+				)
+			}
+		})
+	}
+}
+
+// TestResolveRelativeURLs_AttributeNameBoundaries probes the regex's
+// lack of word-boundary anchoring on the attribute name. The regex
+// `(src|href)="..."` matches any attribute whose NAME ends in "src"
+// or "href" — e.g. `data-src`, `data-href`, `srcset` partially.
+//
+// The most important false-positive is `data-src="..."` (lazy-loading
+// images): the regex sees `src="..."` inside the longer attribute and
+// rewrites the value. Lazy-loading content using `data-src` paired with
+// a placeholder `src` would have its real URL rewritten to an absolute
+// form — possibly correct, possibly not, but in either case it is the
+// wrong attribute to act on.
+func TestResolveRelativeURLs_AttributeNameBoundaries(t *testing.T) {
+	const base = "https://example.com/blog/post"
+
+	tests := []struct {
+		name              string
+		content           string
+		wantUnchangedAttr string // substring that must remain in output
+		note              string
+	}{
+		{
+			name:              "data-src is not src",
+			content:           `<img data-src="images/foo.png">`,
+			wantUnchangedAttr: `data-src="images/foo.png"`,
+			note:              "regex has no word boundary; data-src is matched",
+		},
+		{
+			name:              "data-href is not href",
+			content:           `<a data-href="page.html">x</a>`,
+			wantUnchangedAttr: `data-href="page.html"`,
+			note:              "same problem for href",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveRelativeURLs(tt.content, base)
+			if !strings.Contains(got, tt.wantUnchangedAttr) {
+				t.Errorf(
+					"ResolveRelativeURLs(%q) = %q; expected attribute %q to be untouched (note: %s)",
+					tt.content, got, tt.wantUnchangedAttr, tt.note,
+				)
+			}
+		})
+	}
+}
+
+// TestResolveRelativeURLs_OtherURLAttributes pins the set of URL-bearing
+// HTML attributes that the regex does NOT handle. Each of these can
+// legitimately appear in feed content (especially Media RSS / podcasts)
+// with a relative value; the regex skips them and the relative form
+// survives into the rendered page.
+//
+// srcset is interesting because it is stripped by bluemonday (the
+// source srcset test in TestHTML confirms this), so in the current
+// pipeline the relative URL is moot — the whole attr is removed. But
+// poster on <video> is allow-listed by the sanitiser (so long as the
+// value matches ^https?://) and would survive to the user.
+//
+// For each attribute below, the unresolved relative value is asserted
+// to survive the rewriter. This is a UX bug, not a security bug:
+// poster fails the sanitiser's https? match and gets dropped; form
+// is dropped by UGCPolicy; srcset is dropped on source. Net effect:
+// these attributes vanish entirely instead of being resolved + kept.
+func TestResolveRelativeURLs_OtherURLAttributes(t *testing.T) {
+	const base = "https://example.com/blog/post"
+
+	tests := []struct {
+		name string
+		// content fed to ResolveRelativeURLs.
+		content string
+		// attribute substring that must still appear in the output,
+		// demonstrating that the rewriter did not resolve it.
+		wantUnresolved string
+		note           string
+	}{
+		{
+			name:           "srcset is not resolved",
+			content:        `<img srcset="small.jpg 1x, large.jpg 2x">`,
+			wantUnresolved: `srcset="small.jpg 1x, large.jpg 2x"`,
+			note:           "srcset URLs stay relative",
+		},
+		{
+			name:           "video poster is not resolved",
+			content:        `<video poster="trailer-thumb.jpg"></video>`,
+			wantUnresolved: `poster="trailer-thumb.jpg"`,
+			note:           "poster on <video> stays relative",
+		},
+		{
+			name:           "form action is not resolved",
+			content:        `<form action="submit"><input></form>`,
+			wantUnresolved: `action="submit"`,
+			note:           "form action stays relative (bluemonday strips forms anyway)",
+		},
+		{
+			name:           "object data is not resolved",
+			content:        `<object data="movie.swf"></object>`,
+			wantUnresolved: `data="movie.swf"`,
+			note:           "<object data> is the canonical URL attribute on <object>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveRelativeURLs(tt.content, base)
+			if !strings.Contains(got, tt.wantUnresolved) {
+				t.Errorf(
+					"expected unresolved attribute %q in output %q (note: %s)",
+					tt.wantUnresolved, got, tt.note,
+				)
+			}
+		})
+	}
+}
+
+// TestResolveRelativeURLs_ProtocolRelative pins behaviour for
+// protocol-relative URLs ("//cdn.example.com/x.jpg"). RFC 3986 calls
+// these "network-path references"; they inherit the scheme of the
+// base. net/url.ResolveReference handles them correctly.
+func TestResolveRelativeURLs_ProtocolRelative(t *testing.T) {
+	got := ResolveRelativeURLs(
+		`<img src="//cdn.example.com/x.jpg">`,
+		"https://example.com/blog/post",
+	)
+	want := `src="https://cdn.example.com/x.jpg"`
+	if !strings.Contains(got, want) {
+		t.Errorf("got %q, want substring %q", got, want)
+	}
+}
+
+// TestResolveRelativeURLs_MailtoAndTel pins behaviour for non-http
+// schemes commonly used in feeds (mailto:, tel:). These parse as
+// absolute URLs (url.IsAbs() returns true) and so the rewriter leaves
+// them alone.
+func TestResolveRelativeURLs_MailtoAndTel(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "mailto href is untouched",
+			content: `<a href="mailto:x@y.z">mail</a>`,
+		},
+		{
+			name:    "tel href is untouched",
+			content: `<a href="tel:+15551234">call</a>`,
+		},
+	}
+	const base = "https://example.com/blog/post"
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveRelativeURLs(tt.content, base)
+			if got != tt.content {
+				t.Errorf("got %q, want %q (unchanged)", got, tt.content)
+			}
+		})
+	}
+}
+
 func TestHighlightCodeBlocks(t *testing.T) {
 	tests := []struct {
 		name     string

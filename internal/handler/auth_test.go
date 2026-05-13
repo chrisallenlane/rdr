@@ -353,6 +353,153 @@ func TestHandleLogin(t *testing.T) {
 			t.Errorf("non-existent login took %v; expected >= 20ms (decoy bcrypt must run to prevent username enumeration)", elapsed)
 		}
 	})
+
+	t.Run("non-ErrNoRows DB error still runs decoy bcrypt", func(t *testing.T) {
+		// Guards against a subtle regression: the decoy bcrypt must run for
+		// any DB error, not only sql.ErrNoRows. Otherwise the response time
+		// for a transient DB failure (sub-millisecond) becomes
+		// distinguishable from "user does not exist" (~bcrypt cost),
+		// reintroducing a timing oracle. We force a non-ErrNoRows error by
+		// closing the underlying *sql.DB before the request — Scan then
+		// returns "sql: database is closed" rather than sql.ErrNoRows.
+		s := newTestServer(t)
+
+		// Close the DB to force a non-ErrNoRows error from QueryRow.Scan.
+		if err := s.db.Close(); err != nil {
+			t.Fatalf("closing test db: %v", err)
+		}
+
+		form := url.Values{
+			"username": {"anybody"},
+			"password": {"testpass1"},
+		}
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/login",
+			strings.NewReader(form.Encode()),
+		)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		start := time.Now()
+		s.ServeHTTP(rec, req)
+		elapsed := time.Since(start)
+
+		// Response should be the friendly error page (200), not a 500.
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		// The decoy bcrypt must have run. Same 20ms floor as the
+		// non-existent-username test.
+		if elapsed < 20*time.Millisecond {
+			t.Errorf("login with closed DB took %v; expected >= 20ms (decoy bcrypt must run on non-ErrNoRows DB errors too)", elapsed)
+		}
+	})
+}
+
+// TestHandleRegister_LongPassword pins the current behavior when a password
+// longer than 72 bytes is submitted to /register.
+//
+// Contrary to a common assumption, golang.org/x/crypto/bcrypt does NOT
+// silently truncate passwords at 72 bytes — it returns ErrPasswordTooLong
+// from GenerateFromPassword. handleRegister surfaces that error via
+// s.internalError, which renders a generic 500 page. The user has no
+// indication that the password length was the cause.
+//
+// This is a UX bug, not a security bug: registration fails (no truncated
+// hash is ever stored), so there is no shared-prefix login attack. The
+// fix is to add an explicit length validation alongside the existing
+// minimum-length check so the user gets a friendly error instead of a 500.
+//
+// Severity is LOW under the homelab threat model: a single intentional
+// operator who pastes a >72-byte password sees a confusing 500 once and
+// shortens it. There is no risk to anyone else.
+func TestHandleRegister_LongPassword(t *testing.T) {
+	s := newTestServer(t)
+
+	// 100 bytes. Above bcrypt's 72-byte limit.
+	password := strings.Repeat("a", 100)
+	form := url.Values{
+		"username":         {"longpw"},
+		"password":         {password},
+		"password_confirm": {password},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/register",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	// Current behavior: 500. After a fix that validates max-length up
+	// front, this should become 200 with a friendly error message (the
+	// same shape as the existing "Password must be at least 8 characters"
+	// error). When that fix lands, this test should be updated to assert
+	// the new contract.
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d (pins current behavior: bcrypt's ErrPasswordTooLong is surfaced as a generic 500 with no user-visible explanation)",
+			rec.Code, http.StatusInternalServerError)
+	}
+
+	// No user row should have been inserted. This is the saving grace:
+	// the failure is loud, not silent. There is no truncated hash in the
+	// DB that would later be matched by a shorter password.
+	var count int
+	if err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM users WHERE username = ?", "longpw",
+	).Scan(&count); err != nil {
+		t.Fatalf("querying user: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("user row count = %d, want 0 (registration failed; no row should be inserted)", count)
+	}
+
+	// And no session cookie either.
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "rdr_session" {
+			t.Error("no session cookie should be set when registration fails")
+		}
+	}
+}
+
+// TestHandleRegister_NoUsernameLengthCap pins the current uncapped
+// username behavior. A 10 KB username is accepted and stored verbatim.
+//
+// Severity is LOW: single-user homelab, no public registration on the
+// hostile internet. The downside is a one-shot paste-bomb that produces
+// a fat row; the system continues to function. A 64-char cap would be
+// reasonable hygiene but is not urgent.
+func TestHandleRegister_NoUsernameLengthCap(t *testing.T) {
+	s := newTestServer(t)
+
+	longUser := strings.Repeat("u", 10_000)
+	form := url.Values{
+		"username":         {longUser},
+		"password":         {"securepass"},
+		"password_confirm": {"securepass"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/register",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("register status = %d, want %d (no length cap currently exists)",
+			rec.Code, http.StatusSeeOther)
+	}
+
+	var got string
+	if err := s.db.QueryRow(
+		"SELECT username FROM users WHERE LENGTH(username) = ?",
+		len(longUser),
+	).Scan(&got); err != nil {
+		t.Fatalf("querying long-username user: %v", err)
+	}
+	if got != longUser {
+		t.Errorf("stored username length = %d, want %d (no truncation expected at this layer)",
+			len(got), len(longUser))
+	}
 }
 
 func TestHandleLogout(t *testing.T) {
