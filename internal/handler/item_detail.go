@@ -40,7 +40,11 @@ func (s *Server) adjacentItemID(userID int64, pubStr string, itemID int64, prev 
 		),
 		userID, pubStr, pubStr, itemID,
 	).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
 	if err != nil {
+		slog.Warn("querying adjacent item", "user_id", userID, "item_id", itemID, "prev", prev, "error", err)
 		return nil
 	}
 	return &id
