@@ -666,47 +666,61 @@ func TestResolveRelativeURLs_AttributeNameBoundaries(t *testing.T) {
 	}
 }
 
-// TestResolveRelativeURLs_OtherURLAttributes pins the set of URL-bearing
-// HTML attributes that the regex does NOT handle. Each of these can
-// legitimately appear in feed content (especially Media RSS / podcasts)
-// with a relative value; the regex skips them and the relative form
-// survives into the rendered page.
+// TestResolveRelativeURLs_OtherURLAttributes checks resolution of URL-bearing
+// HTML attributes beyond the basic src/href pair, as well as attributes that
+// intentionally stay unresolved (form action, object data).
 //
-// srcset is interesting because it is stripped by bluemonday (the
-// source srcset test in TestHTML confirms this), so in the current
-// pipeline the relative URL is moot — the whole attr is removed. But
-// poster on <video> is allow-listed by the sanitiser (so long as the
-// value matches ^https?://) and would survive to the user.
+// srcset (img/source) and poster (video) are now resolved by the tokenizer-
+// based implementation. The downstream bluemonday sanitiser still enforces
+// its own allow-lists: source srcset is stripped entirely; video poster is
+// kept only when the resolved value starts with https?://. After the fix,
+// relative srcset/poster values are resolved to absolute URLs, giving the
+// sanitiser a chance to keep them rather than dropping them.
 //
-// For each attribute below, the unresolved relative value is asserted
-// to survive the rewriter. This is a UX bug, not a security bug:
-// poster fails the sanitiser's https? match and gets dropped; form
-// is dropped by UGCPolicy; srcset is dropped on source. Net effect:
-// these attributes vanish entirely instead of being resolved + kept.
+// form action and object data are not in the rewriter's element/attribute
+// matrix and remain unresolved (bluemonday drops both elements anyway).
 func TestResolveRelativeURLs_OtherURLAttributes(t *testing.T) {
 	const base = "https://example.com/blog/post"
 
-	tests := []struct {
-		name string
-		// content fed to ResolveRelativeURLs.
-		content string
-		// attribute substring that must still appear in the output,
-		// demonstrating that the rewriter did not resolve it.
+	// resolvedTests: attributes that the tokenizer-based rewriter now resolves.
+	resolvedTests := []struct {
+		name         string
+		content      string
+		wantResolved string
+		note         string
+	}{
+		{
+			name:         "srcset is resolved",
+			content:      `<img srcset="small.jpg 1x, large.jpg 2x">`,
+			wantResolved: `https://example.com/blog/small.jpg`,
+			note:         "srcset URLs are now resolved to absolute form",
+		},
+		{
+			name:         "video poster is resolved",
+			content:      `<video poster="trailer-thumb.jpg"></video>`,
+			wantResolved: `https://example.com/blog/trailer-thumb.jpg`,
+			note:         "poster on <video> is now resolved to absolute form",
+		},
+	}
+	for _, tt := range resolvedTests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolveRelativeURLs(tt.content, base)
+			if !strings.Contains(got, tt.wantResolved) {
+				t.Errorf(
+					"expected resolved URL %q in output %q (note: %s)",
+					tt.wantResolved, got, tt.note,
+				)
+			}
+		})
+	}
+
+	// unresolvedTests: attributes outside the rewriter's matrix stay untouched.
+	unresolvedTests := []struct {
+		name           string
+		content        string
 		wantUnresolved string
 		note           string
 	}{
-		{
-			name:           "srcset is not resolved",
-			content:        `<img srcset="small.jpg 1x, large.jpg 2x">`,
-			wantUnresolved: `srcset="small.jpg 1x, large.jpg 2x"`,
-			note:           "srcset URLs stay relative",
-		},
-		{
-			name:           "video poster is not resolved",
-			content:        `<video poster="trailer-thumb.jpg"></video>`,
-			wantUnresolved: `poster="trailer-thumb.jpg"`,
-			note:           "poster on <video> stays relative",
-		},
 		{
 			name:           "form action is not resolved",
 			content:        `<form action="submit"><input></form>`,
@@ -720,8 +734,7 @@ func TestResolveRelativeURLs_OtherURLAttributes(t *testing.T) {
 			note:           "<object data> is the canonical URL attribute on <object>",
 		},
 	}
-
-	for _, tt := range tests {
+	for _, tt := range unresolvedTests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ResolveRelativeURLs(tt.content, base)
 			if !strings.Contains(got, tt.wantUnresolved) {

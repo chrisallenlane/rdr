@@ -3,7 +3,6 @@ package sanitize
 
 import (
 	"bytes"
-	"fmt"
 	htmlpkg "html"
 	"html/template"
 	"net/url"
@@ -15,10 +14,19 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/microcosm-cc/bluemonday"
+	"golang.org/x/net/html"
 )
 
-// relativeURLRe matches src="..." and href="..." attributes.
-var relativeURLRe = regexp.MustCompile(`(src|href)="([^"]*)"`)
+// urlAttrs maps element names to the set of attributes that carry URLs and
+// should be resolved against the base URL. Only elements that legitimately
+// appear in feed content are listed.
+var urlAttrs = map[string]map[string]bool{
+	"a":      {"href": true},
+	"img":    {"src": true, "srcset": true},
+	"source": {"src": true, "srcset": true},
+	"video":  {"src": true, "poster": true},
+	"audio":  {"src": true},
+}
 
 // codeBlockRe matches <pre><code class="language-xxx">...</code></pre> blocks,
 // with or without a language class.
@@ -79,10 +87,15 @@ func HTML(raw string) template.HTML {
 	return template.HTML(clean)
 }
 
-// ResolveRelativeURLs rewrites relative src and href attributes in HTML
-// content to absolute URLs using the given base URL. This allows images
-// and links with relative paths to load correctly when displayed outside
-// their original context.
+// ResolveRelativeURLs rewrites relative URL attributes in HTML content to
+// absolute URLs using the given base URL. This allows images and links with
+// relative paths to load correctly when displayed outside their original
+// context.
+//
+// It uses golang.org/x/net/html tokenization so that all attribute quoting
+// styles (double-quoted, single-quoted, unquoted) are handled correctly, and
+// only exact attribute names are matched (e.g. data-src is never mistaken for
+// src).
 func ResolveRelativeURLs(content, baseURL string) string {
 	if baseURL == "" {
 		return content
@@ -98,21 +111,73 @@ func ResolveRelativeURLs(content, baseURL string) string {
 		}
 	}
 
-	return relativeURLRe.ReplaceAllStringFunc(content, func(match string) string {
-		parts := relativeURLRe.FindStringSubmatch(match)
-		attr, val := parts[1], parts[2]
-		if val == "" || strings.HasPrefix(val, "#") {
-			return match
+	var buf strings.Builder
+	tok := html.NewTokenizer(strings.NewReader(content))
+	for {
+		tt := tok.Next()
+		if tt == html.ErrorToken {
+			break
 		}
-		u, err := url.Parse(val)
-		if err != nil || u.IsAbs() {
-			return match
+
+		if tt != html.StartTagToken && tt != html.SelfClosingTagToken {
+			buf.WriteString(tok.Token().String())
+			continue
 		}
-		// For absolute paths (/foo/bar), prepend the origin.
-		// For relative paths (foo/bar), resolve against the base directory.
-		resolved := base.ResolveReference(u)
-		return fmt.Sprintf(`%s="%s"`, attr, resolved.String())
-	})
+
+		t := tok.Token()
+		attrMap, inMatrix := urlAttrs[t.Data]
+		if !inMatrix {
+			buf.WriteString(t.String())
+			continue
+		}
+
+		// Rewrite URL attributes that are in the matrix for this element.
+		for i, a := range t.Attr {
+			if !attrMap[a.Key] {
+				continue
+			}
+			if a.Key == "srcset" {
+				t.Attr[i].Val = resolveSrcset(a.Val, base)
+			} else {
+				t.Attr[i].Val = resolveURL(a.Val, base)
+			}
+		}
+		buf.WriteString(t.String())
+	}
+	return buf.String()
+}
+
+// resolveURL resolves a single URL value against base. Values that are empty,
+// fragment-only, or already absolute are returned unchanged.
+func resolveURL(val string, base *url.URL) string {
+	if val == "" || strings.HasPrefix(val, "#") {
+		return val
+	}
+	u, err := url.Parse(val)
+	if err != nil || u.IsAbs() {
+		return val
+	}
+	return base.ResolveReference(u).String()
+}
+
+// resolveSrcset resolves each URL in a srcset attribute value against base.
+// srcset is a comma-separated list of "URL [descriptor]" pairs.
+func resolveSrcset(srcset string, base *url.URL) string {
+	if srcset == "" {
+		return srcset
+	}
+	parts := strings.Split(srcset, ",")
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		fields := strings.Fields(part)
+		if len(fields) == 0 {
+			continue
+		}
+		resolved := resolveURL(fields[0], base)
+		fields[0] = resolved
+		parts[i] = strings.Join(fields, " ")
+	}
+	return strings.Join(parts, ", ")
 }
 
 // HighlightCodeBlocks finds <pre><code> blocks in sanitized HTML and
