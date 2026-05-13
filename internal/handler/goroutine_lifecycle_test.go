@@ -111,11 +111,14 @@ func TestOPMLImportGoroutineSurvivesDBClose(t *testing.T) {
 	// Release the slow feed server; the goroutine can now finish.
 	close(release)
 
-	// Wait() should unblock once the goroutine completes.
+	// Wait() should unblock once the goroutine completes. The deadline is
+	// generous because the goroutine iterates two feeds at the same host,
+	// each of which does a HTTP fetch plus a singleflight-serialized favicon
+	// fetch — under parallel test load this can take several seconds.
 	select {
 	case <-waitDone:
 		// good
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("bg.Wait() did not return after releasing the feed server")
 	}
 
