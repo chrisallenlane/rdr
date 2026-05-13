@@ -6,6 +6,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
 	"github.com/chrisallenlane/rdr/internal/testutil"
@@ -48,7 +49,14 @@ var testTemplateFS = fstest.MapFS{
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	db := testutil.OpenTestDB(t)
-	s, err := NewServer(db, fstest.MapFS{}, testTemplateFS, t.TempDir())
+	s, err := NewServer(
+		context.Background(),
+		&background.Group{},
+		db,
+		fstest.MapFS{},
+		testTemplateFS,
+		t.TempDir(),
+	)
 	if err != nil {
 		t.Fatalf("newTestServer: %v", err)
 	}

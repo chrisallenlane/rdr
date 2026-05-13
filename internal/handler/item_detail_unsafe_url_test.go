@@ -9,6 +9,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/testutil"
 )
 
@@ -38,7 +39,7 @@ func newTestServerWithRealItemHref(t *testing.T) *Server {
 		Data: []byte(itemTemplateWithURLHref),
 	}
 	db := testutil.OpenTestDB(t)
-	s, err := NewServer(db, fstest.MapFS{}, tplFS, t.TempDir())
+	s, err := NewServer(context.Background(), &background.Group{}, db, fstest.MapFS{}, tplFS, t.TempDir())
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

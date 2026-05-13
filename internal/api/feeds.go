@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -133,15 +132,18 @@ func (s *Server) AddFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fire-and-forget the initial fetch. The new feed row is returned
-	// immediately so callers don't block on remote IO.
-	go func(feedID int64, feedURL string, faviconsDir string, db *sql.DB) {
+	// Start the initial fetch in the background, tracked by the server's
+	// WaitGroup so graceful shutdown waits for it before closing the DB.
+	{
 		feed := &model.Feed{ID: feedID, UserID: uid, URL: feedURL}
-		if err := poller.FetchAndStoreFeed(context.Background(), db, feed, faviconsDir); err != nil {
-			slog.Warn("api: initial feed fetch failed",
-				"feed_id", feedID, "url", feedURL, "error", err)
-		}
-	}(feedID, feedURL, s.faviconsDir, s.db)
+		ctx, db, faviconsDir := s.ctx, s.db, s.faviconsDir
+		s.bg.Go(func() {
+			if err := poller.FetchAndStoreFeed(ctx, db, feed, faviconsDir); err != nil {
+				slog.Warn("api: initial feed fetch failed",
+					"feed_id", feedID, "url", feedURL, "error", err)
+			}
+		})
+	}
 
 	// Read back the freshly-inserted row so the response carries the
 	// authoritative server-side timestamps, defaulted strings, etc.

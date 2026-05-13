@@ -17,6 +17,8 @@ func (s *Server) routes() {
 	// via closures so the api server picks up SetSyncFunc / SetSyncStatusFunc
 	// calls that happen after NewServer returns.
 	s.mux.Handle("/api/", api.New(api.Config{
+		Ctx:          s.ctx,
+		Background:   s.bg,
 		DB:           s.db,
 		FaviconsDir:  s.faviconsDir,
 		FeedResolver: s.feedResolver,

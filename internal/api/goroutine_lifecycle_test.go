@@ -1,13 +1,14 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/testutil"
 	"github.com/chrisallenlane/rdr/internal/token"
 )
@@ -28,30 +29,18 @@ func validRSSResponse() string {
 </rss>`
 }
 
-// TestAddFeedGoroutineSurvivesDBClose demonstrates that the
-// fire-and-forget goroutine spawned by AddFeed at
-// internal/api/feeds.go:138 is not lifecycle-tracked: it uses
-// context.Background() (line 140), so neither request cancellation nor
-// application shutdown can stop it before db.Close() runs underneath it.
+// TestAddFeedGoroutineSurvivesDBClose verifies that the background goroutine
+// spawned by AddFeed is tracked by the Config.Background group, so that
+// bg.Wait() blocks until the in-flight fetch completes, and the DB is never
+// closed underneath it.
 //
-// In production, when cmd/rdr/main.go's deferred db.Close() fires, an
-// AddFeed-spawned goroutine that happens to be in flight will write to
-// a closed handle. The result is "sql: database is closed" errors
-// logged from inside FetchAndStoreFeed via slog.Warn at feeds.go:141.
-//
-// This is strictly worse than the HTML AddFeed handler
-// (internal/handler/feeds.go:141) which fetches synchronously inside
-// the request — that design has its own latency tradeoff but at least
-// piggybacks on http.Server.Shutdown's grace period.
-//
-// The fix is to thread a sync.WaitGroup (or a dedicated "background
-// jobs" type) through Config so this goroutine is registered and
-// main's wg.Wait can join it; plus use the application context (not
-// context.Background()) so the in-flight HTTP call can be cancelled.
+// The test uses a slow feed server to hold the fetch open, then:
+//  1. Confirms bg.Wait() blocks while the fetch is in flight.
+//  2. Releases the feed server.
+//  3. Confirms bg.Wait() unblocks after the goroutine completes.
+//  4. Confirms the DB is still open (no goroutine ran against a closed handle).
 func TestAddFeedGoroutineSurvivesDBClose(t *testing.T) {
-	// Slow feed server that blocks until the test releases it. This
-	// lets us deterministically interleave db.Close() with the
-	// in-flight fetch.
+	// Slow feed server that blocks until the test releases it.
 	release := make(chan struct{})
 	hits := make(chan struct{}, 4)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -72,11 +61,15 @@ func TestAddFeedGoroutineSurvivesDBClose(t *testing.T) {
 		t.Fatalf("token.Generate: %v", err)
 	}
 
-	// FeedResolver returns the slow server URL. AddFeed will then
-	// insert the row and spawn the background fetch goroutine.
+	// Wire a background.Group so the goroutine is tracked.
+	// Use a non-cancelled context so the in-flight HTTP request is not aborted
+	// before we get a chance to observe that Wait() blocks.
+	var bg background.Group
 	feedURL := ts.URL + "/feed.xml"
 	h := New(Config{
 		DB:           db,
+		Ctx:          context.Background(),
+		Background:   &bg,
 		FeedResolver: stubResolver(feedURL, nil),
 	})
 
@@ -88,38 +81,41 @@ func TestAddFeedGoroutineSurvivesDBClose(t *testing.T) {
 		t.Fatalf("status: got %d, want 201; body=%q", rec.Code, rec.Body.String())
 	}
 
-	// Wait for the background goroutine to actually be in flight
-	// against the slow server.
+	// Wait for the background goroutine to actually be in flight.
 	select {
 	case <-hits:
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for background fetch to start")
 	}
 
-	// Now close the DB while the goroutine is still blocked in the
-	// feed fetch. This is the exact production scenario: AddFeed
-	// returned 201 to the client, then main.go's `defer db.Close()`
-	// fires (because nothing waits on the spawned goroutine).
-	if err := db.Close(); err != nil {
-		t.Fatalf("db.Close: %v", err)
+	// Call bg.Wait() in a goroutine so we can assert it blocks.
+	waitDone := make(chan struct{})
+	go func() {
+		defer close(waitDone)
+		bg.Wait()
+	}()
+
+	// bg.Wait() must still be blocking — the goroutine holds the fetch open.
+	select {
+	case <-waitDone:
+		t.Fatal("bg.Wait() returned before the feed server was released — goroutine was not tracked")
+	case <-time.After(150 * time.Millisecond):
+		// good: still blocking
 	}
 
-	// Release the server. The goroutine will now race into UPDATE/INSERT
-	// statements against a closed DB.
+	// Release the server. The goroutine can now finish.
 	close(release)
 
-	// Give the goroutine time to attempt its DB writes. There is no
-	// public API to wait for it, which is exactly the bug.
-	time.Sleep(200 * time.Millisecond)
-
-	// Confirm the DB is closed (proves the precondition for the race).
-	_, err = db.Exec("SELECT 1")
-	if err == nil || !strings.Contains(err.Error(), "closed") {
-		t.Fatalf("expected closed-DB error, got: %v", err)
+	// Wait() should unblock once the goroutine completes.
+	select {
+	case <-waitDone:
+		// good
+	case <-time.After(5 * time.Second):
+		t.Fatal("bg.Wait() did not return after releasing the feed server")
 	}
 
-	// The bug is structural — there is no way for the test to assert
-	// "the goroutine has finished" because no Wait() exists. The
-	// captured slog output ("sql: database is closed") is the
-	// production-visible symptom; the assertion is on the code shape.
+	// The DB must still be open — nothing ran against a closed handle.
+	if _, err := db.Exec("SELECT 1"); err != nil {
+		t.Errorf("DB should still be open after bg.Wait(), got error: %v", err)
+	}
 }

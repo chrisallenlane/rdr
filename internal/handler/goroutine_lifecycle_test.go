@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/model"
 )
 
@@ -30,27 +30,19 @@ func validRSSResponse() string {
 </rss>`
 }
 
-// TestOPMLImportGoroutineSurvivesDBClose demonstrates that
-// handleImportOPML's background goroutine (the one spawned at
-// internal/handler/opml.go:314 with `context.WithoutCancel`) is NOT
-// tracked by any lifecycle owner: it is happy to keep running after the
-// database has been closed.
+// TestOPMLImportGoroutineSurvivesDBClose (name preserved for test-history
+// continuity) verifies that the background goroutine spawned by
+// handleImportOPML is tracked by the server's background.Group so that
+// bg.Wait() blocks until the in-flight fetch completes, and the DB is never
+// closed underneath it.
 //
-// In production, main.go's shutdown path runs:
-//
-//	wg.Wait()       // waits only on the poller's periodic loop
-//	httpServer.Shutdown(...)
-//	defer db.Close()
-//
-// fetchImportedFeeds is registered with NEITHER the wg nor the
-// httpServer, so its goroutine outlives both. With the test below,
-// driving fetchImportedFeeds directly and closing the DB underneath
-// it produces "sql: database is closed" errors from inside
-// FetchAndStoreFeed.
+// The test uses a slow feed server to hold the goroutine open, then:
+//  1. Confirms bg.Wait() blocks while the fetch is in flight.
+//  2. Releases the feed server.
+//  3. Confirms bg.Wait() unblocks after the goroutine completes.
+//  4. Confirms the DB is still open (no goroutine ran against a closed handle).
 func TestOPMLImportGoroutineSurvivesDBClose(t *testing.T) {
-	// A slow feed server that blocks until the test releases it. This
-	// lets us deterministically interleave db.Close() with an in-flight
-	// fetch.
+	// A slow feed server that blocks until the test releases it.
 	release := make(chan struct{})
 	hits := make(chan struct{}, 32)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -64,7 +56,12 @@ func TestOPMLImportGoroutineSurvivesDBClose(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	s := newTestServer(t)
+	// Build the server with a non-cancelled context and explicit bg group,
+	// matching the production wiring in main.go. We don't cancel the context
+	// here so the in-flight HTTP request is not aborted before we can observe
+	// that bg.Wait() blocks.
+	var bg background.Group
+	s := newTestServerWithBG(t, context.Background(), &bg)
 	userID := createTestUser(t, s, "testuser", "testpass1")
 
 	// Seed two feeds so fetchImportedFeeds iterates more than once.
@@ -85,63 +82,56 @@ func TestOPMLImportGoroutineSurvivesDBClose(t *testing.T) {
 		feeds = append(feeds, &model.Feed{ID: id, UserID: userID, URL: feedURL})
 	}
 
-	// fetchImportedFeeds is fire-and-forget in the real code. Track its
-	// completion here only so the test itself doesn't leak; production
-	// code has no such hook.
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		// Match the real call site exactly: context.WithoutCancel(r.Context()).
-		ctx := context.WithoutCancel(context.Background())
-		s.fetchImportedFeeds(ctx, feeds)
-	}()
+	// Invoke the real background dispatch path: s.bg.Go wraps fetchImportedFeeds.
+	// This mirrors what handleImportOPML does.
+	s.bg.Go(func() { s.fetchImportedFeeds(s.ctx, feeds) })
 
-	// Wait for the first fetch to actually be in flight against the
-	// slow server (i.e. the goroutine is past the SELECT and into the
-	// network call that precedes the UPDATE/INSERT statements).
+	// Wait for the first fetch to be in flight against the slow server.
 	select {
 	case <-hits:
 	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for the first feed fetch")
+		t.Fatal("timed out waiting for the first feed fetch to start")
 	}
 
-	// Now slam the database shut, simulating cmd/rdr/main.go's
-	// `defer db.Close()` running while a background import is still
-	// mid-flight. In production, this happens because main's wg.Wait()
-	// has nothing to wait for — fetchImportedFeeds was never registered.
-	if err := s.db.Close(); err != nil {
-		t.Fatalf("db.Close: %v", err)
+	// Call bg.Wait() in a goroutine so we can assert it blocks.
+	waitDone := make(chan struct{})
+	go func() {
+		defer close(waitDone)
+		bg.Wait()
+	}()
+
+	// bg.Wait() must still be blocking — the goroutine holds the fetch open.
+	select {
+	case <-waitDone:
+		t.Fatal("bg.Wait() returned before the feed server was released — goroutine was not tracked")
+	case <-time.After(150 * time.Millisecond):
+		// good: still blocking
 	}
 
-	// Release the slow feed server. The goroutine will now race into
-	// the database UPDATE/INSERT statements with a closed DB.
+	// Release the slow feed server; the goroutine can now finish.
 	close(release)
 
+	// Wait() should unblock once the goroutine completes.
 	select {
-	case <-done:
+	case <-waitDone:
+		// good
 	case <-time.After(5 * time.Second):
-		t.Fatal("fetchImportedFeeds did not return after release+close")
+		t.Fatal("bg.Wait() did not return after releasing the feed server")
 	}
 
-	// Sanity check on the bug shape: the goroutine kept running after
-	// db.Close(). We can confirm this by observing that subsequent
-	// queries on the same handle fail. The real-world impact is
-	// "sql: database is closed" being logged via slog.Warn from inside
-	// FetchAndStoreFeed when the deferred recordFetchFailure tries to
-	// run an UPDATE.
-	_, err := s.db.Exec("SELECT 1")
-	if err == nil {
-		t.Fatal("expected db to be closed, but Exec succeeded")
+	// The DB must still be open — nothing ran against a closed handle.
+	if _, err := s.db.Exec("SELECT 1"); err != nil {
+		t.Errorf("DB should still be open after bg.Wait(), got error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "closed") {
-		t.Errorf("unexpected error from closed DB: %v", err)
-	}
+}
 
-	// The bug is structural, not behavioral: there's no way for the
-	// orchestrator to wait for this goroutine before closing the DB,
-	// because the goroutine was spawned with `go s.fetchImportedFeeds(...)`
-	// and the Server type owns no sync.WaitGroup that the orchestrator
-	// can join. This test passes today (the close races the goroutine
-	// successfully); the assertion is on the code shape, not on the
-	// log output.
+// newTestServerWithBG creates a *Server like newTestServer but wires it
+// with the given context and background.Group, matching the production
+// NewServer call in main.go.
+func newTestServerWithBG(t *testing.T, ctx context.Context, bg *background.Group) *Server {
+	t.Helper()
+	s := newTestServer(t)
+	s.ctx = ctx
+	s.bg = bg
+	return s
 }

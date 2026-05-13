@@ -5,38 +5,24 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/testutil"
 )
 
-// TestTriggerSyncDBCloseRaceProducesErrors demonstrates that the
-// goroutine spawned by Poller.TriggerSync (internal/poller/poller.go:65)
-// is not joinable from main's shutdown path, so a db.Close() that runs
-// while a TriggerSync poll is in flight produces "sql: database is
-// closed" errors from inside the running goroutine.
+// TestTriggerSyncDBCloseRaceProducesErrors (name preserved for test-history
+// continuity) verifies that the goroutine spawned by Poller.TriggerSync is
+// tracked by the background.Group so that bg.Wait() blocks until the poll
+// cycle finishes. This ensures the DB is never closed underneath an in-flight
+// sync.
 //
-// Why this race exists in production:
-//
-//	cmd/rdr/main.go:54-62 builds a sync.WaitGroup and registers
-//	Poller.Start() with it. That's the *periodic* loop.
-//	TriggerSync (called by HTTP handlers via the SyncFunc indirection)
-//	does its own `go p.poll(p.ctx)` (line 65), which is never wg.Added.
-//
-//	On shutdown, main runs wg.Wait() → httpServer.Shutdown() → defer
-//	db.Close(). wg.Wait() returns immediately because Start() has
-//	already returned (its loop selects on ctx.Done()). The TriggerSync
-//	goroutine — if one happens to be in flight — is left running.
-//	When the deferred db.Close() fires, that goroutine's next DB
-//	statement (e.g. recordFetchFailure() at internal/poller/feed.go:106,
-//	which runs in a deferred FetchAndStoreFeed cleanup and does NOT
-//	take ctx) writes to a closed handle.
-//
-// The fix is to thread a sync.WaitGroup (or a poller-internal one
-// exposed via a Wait() method) through Poller so TriggerSync's
-// goroutine is registered and main's wg.Wait can join it.
+// The test uses a slow feed server to hold the poll goroutine open, then:
+//  1. Confirms bg.Wait() blocks while the poll is in flight.
+//  2. Releases the feed server.
+//  3. Confirms bg.Wait() unblocks after the goroutine completes.
+//  4. Confirms the DB is still open (no goroutine ran against a closed handle).
 func TestTriggerSyncDBCloseRaceProducesErrors(t *testing.T) {
 	release := make(chan struct{})
 	hits := make(chan struct{}, 4)
@@ -60,56 +46,55 @@ func TestTriggerSyncDBCloseRaceProducesErrors(t *testing.T) {
 		t.Fatalf("inserting feed: %v", err)
 	}
 
-	p := NewPoller(context.Background(), db, time.Hour, 0, t.TempDir())
+	// Use a non-cancelled context so the in-flight HTTP request is not aborted
+	// before we get a chance to observe that Wait() blocks.
+	var bg background.Group
+	p := NewPoller(context.Background(), &bg, db, time.Hour, 0, t.TempDir())
 
 	if started := p.TriggerSync(context.Background()); !started {
 		t.Fatal("TriggerSync returned false on a fresh poller")
 	}
 
+	// Wait for the goroutine to be in flight against the slow feed server.
 	select {
 	case <-hits:
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for first feed fetch")
 	}
 
-	// Sanity check: the TriggerSync goroutine is observably in flight.
+	// Sanity: the goroutine is observably in flight.
 	if !p.IsSyncing() {
 		t.Fatal("expected IsSyncing to be true while fetch is blocked")
 	}
 
-	// Close the DB while the goroutine is still in flight. In
-	// production this is `defer db.Close()` at cmd/rdr/main.go:34
-	// firing before TriggerSync's goroutine has finished — because
-	// nothing in main's wg.Wait() waits for it.
-	if err := db.Close(); err != nil {
-		t.Fatalf("db.Close: %v", err)
+	// Call bg.Wait() in a goroutine so we can assert it blocks.
+	waitDone := make(chan struct{})
+	go func() {
+		defer close(waitDone)
+		bg.Wait()
+	}()
+
+	// bg.Wait() must still be blocking — the goroutine holds the fetch open.
+	select {
+	case <-waitDone:
+		t.Fatal("bg.Wait() returned before the feed server was released — goroutine was not tracked")
+	case <-time.After(150 * time.Millisecond):
+		// good: still blocking
 	}
 
-	// Release the server. The goroutine will now try to UPDATE feeds
-	// against a closed DB. Either:
-	//   - The UPDATE at feed.go:60 (success path) errors out, OR
-	//   - The HTTP error path runs recordFetchFailure() at feed.go:106,
-	//     which also UPDATEs the closed DB.
-	// Both paths log "sql: database is closed" via slog.
+	// Release the server. The goroutine can now finish.
 	close(release)
 
-	// Wait for the goroutine to drain so it can't leak past t.Cleanup.
-	deadline := time.Now().Add(5 * time.Second)
-	for p.IsSyncing() {
-		if time.Now().After(deadline) {
-			t.Fatal("timed out waiting for syncing flag to clear")
-		}
-		time.Sleep(time.Millisecond)
+	// Wait() should unblock once the goroutine completes.
+	select {
+	case <-waitDone:
+		// good
+	case <-time.After(5 * time.Second):
+		t.Fatal("bg.Wait() did not return after releasing the feed server")
 	}
 
-	// Confirm db is closed (proves the race condition's preconditions).
-	_, err := db.Exec("SELECT 1")
-	if err == nil || !strings.Contains(err.Error(), "closed") {
-		t.Fatalf("expected closed-DB error, got: %v", err)
+	// The DB must still be open — nothing ran against a closed handle.
+	if _, err := db.Exec("SELECT 1"); err != nil {
+		t.Errorf("DB should still be open after bg.Wait(), got error: %v", err)
 	}
-
-	// The bug is structural: the test cannot fail because there is no
-	// way for the application to prevent this race today. The slog
-	// output captured during the test is the production-visible
-	// symptom; the assertion is on the code shape.
 }
