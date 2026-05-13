@@ -330,27 +330,15 @@ func TestHandleAddFeedToList(t *testing.T) {
 		}
 	})
 
-	// Demonstrates the user-visible symptom of the race: if the list is
-	// deleted in the gap between verifyOwnership and the UPDATE, the FK
-	// constraint causes the UPDATE to fail, which the handler surfaces
-	// as a 500. The API handler returns 204 (idempotent no-op) in the
-	// equivalent race because RowsAffected=0 is a valid outcome there.
-	t.Run("HTML handler returns 500 if list disappears between check and UPDATE", func(t *testing.T) {
+	// Pins the behavior when a feed is added to a list that no longer exists:
+	// verifyOwnership fails and the handler returns 404. Documents the
+	// API-vs-HTML response-shape divergence for the missing-list case (the
+	// API handler returns 204 because RowsAffected=0 is an accepted outcome).
+	t.Run("add_feed_to_deleted_list_returns_404", func(t *testing.T) {
 		s := newTestServer(t)
 		userID := createTestUser(t, s, "testuser", "testpass1")
 		listID := insertTestList(t, s, userID, "My List")
 		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
-
-		// Simulate the race: delete the list AFTER the (hypothetical)
-		// ownership check would have passed. Then the handler invocation
-		// proceeds to the UPDATE, which fails on the FK constraint. We
-		// can't actually inject between the two statements in the
-		// handler, so the closest deterministic approximation is:
-		// pre-delete the list and call the handler. Since the
-		// verifyOwnership check now also fails, this exercises the
-		// "list never existed" path rather than the true race. Kept as
-		// behavior pinning — documents the API-vs-HTML response-shape
-		// divergence for the missing-list case.
 		if _, err := s.db.Exec("DELETE FROM lists WHERE id = ?", listID); err != nil {
 			t.Fatalf("deleting list: %v", err)
 		}

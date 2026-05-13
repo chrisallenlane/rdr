@@ -30,18 +30,10 @@ func validRSSResponse() string {
 </rss>`
 }
 
-// TestOPMLImportGoroutineSurvivesDBClose (name preserved for test-history
-// continuity) verifies that the background goroutine spawned by
-// handleImportOPML is tracked by the server's background.Group so that
-// bg.Wait() blocks until the in-flight fetch completes, and the DB is never
-// closed underneath it.
-//
-// The test uses a slow feed server to hold the goroutine open, then:
-//  1. Confirms bg.Wait() blocks while the fetch is in flight.
-//  2. Releases the feed server.
-//  3. Confirms bg.Wait() unblocks after the goroutine completes.
-//  4. Confirms the DB is still open (no goroutine ran against a closed handle).
-func TestOPMLImportGoroutineSurvivesDBClose(t *testing.T) {
+// TestOPMLImport_BackgroundGoroutineTracked verifies that the background
+// goroutine spawned by handleImportOPML is registered with the server's
+// background.Group, so bg.Wait() blocks until the in-flight fetch completes.
+func TestOPMLImport_BackgroundGoroutineTracked(t *testing.T) {
 	// A slow feed server that blocks until the test releases it.
 	release := make(chan struct{})
 	hits := make(chan struct{}, 32)

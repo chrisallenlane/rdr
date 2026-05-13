@@ -29,17 +29,10 @@ func validRSSResponse() string {
 </rss>`
 }
 
-// TestAddFeedGoroutineSurvivesDBClose verifies that the background goroutine
-// spawned by AddFeed is tracked by the Config.Background group, so that
-// bg.Wait() blocks until the in-flight fetch completes, and the DB is never
-// closed underneath it.
-//
-// The test uses a slow feed server to hold the fetch open, then:
-//  1. Confirms bg.Wait() blocks while the fetch is in flight.
-//  2. Releases the feed server.
-//  3. Confirms bg.Wait() unblocks after the goroutine completes.
-//  4. Confirms the DB is still open (no goroutine ran against a closed handle).
-func TestAddFeedGoroutineSurvivesDBClose(t *testing.T) {
+// TestAddFeed_BackgroundGoroutineTracked verifies that the background goroutine
+// spawned by AddFeed is registered with the Config.Background group, so
+// bg.Wait() blocks until the in-flight fetch completes.
+func TestAddFeed_BackgroundGoroutineTracked(t *testing.T) {
 	// Slow feed server that blocks until the test releases it.
 	release := make(chan struct{})
 	hits := make(chan struct{}, 4)

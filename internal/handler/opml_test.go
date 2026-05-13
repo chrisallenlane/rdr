@@ -1129,52 +1129,6 @@ func TestResolveListID_TOCTOU_SilentNullFallback(t *testing.T) {
 		t.Fatalf("SELECT id: err = %v, want sql.ErrNoRows", err)
 	}
 
-	// Step 4: insert a feed mimicking the surviving handler path —
-	// listID is nil because resolveListID errored. The feed is
-	// silently saved with list_id = NULL.
-	if _, err := s.db.Exec(
-		"INSERT INTO feeds (user_id, url, title) VALUES (?, ?, ?)",
-		userID, "https://example.com/feed.xml", "Example",
-	); err != nil {
-		t.Fatalf("INSERT feed: %v", err)
-	}
-	var nullCount int
-	if err := s.db.QueryRow(
-		"SELECT COUNT(*) FROM feeds WHERE user_id = ? AND list_id IS NULL",
-		userID,
-	).Scan(&nullCount); err != nil {
-		t.Fatalf("counting feeds with NULL list_id: %v", err)
-	}
-	if nullCount != 1 {
-		t.Errorf("feeds with list_id=NULL = %d, want 1 (silent fallback)", nullCount)
-	}
-
-	// Sanity: an INSERT ... RETURNING id pattern (the recommended fix)
-	// is atomic and would never observe this state — the row either
-	// exists at end-of-statement with its id, or the statement
-	// reports failure. Demonstrate that the database supports the
-	// fix without modification to production code.
-	if _, err := s.db.Exec(
-		"INSERT OR IGNORE INTO lists (user_id, name) VALUES (?, ?)",
-		userID, "Tech",
-	); err != nil {
-		t.Fatalf("re-INSERT for RETURNING demo: %v", err)
-	}
-	var atomicID int64
-	if err := s.db.QueryRow(
-		// modernc.org/sqlite supports INSERT ... ON CONFLICT ... RETURNING
-		// (SQLite >= 3.35). A single-statement upsert eliminates the
-		// race window entirely.
-		"INSERT INTO lists (user_id, name) VALUES (?, ?) "+
-			"ON CONFLICT(user_id, name) DO UPDATE SET name = name "+
-			"RETURNING id",
-		userID, "Tech",
-	).Scan(&atomicID); err != nil {
-		t.Fatalf("atomic upsert RETURNING id: %v", err)
-	}
-	if atomicID == 0 {
-		t.Errorf("atomic upsert returned id=0")
-	}
 }
 
 func TestCollectFeedsWithFolder(t *testing.T) {

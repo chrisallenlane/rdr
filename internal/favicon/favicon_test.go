@@ -712,14 +712,14 @@ func TestFetch_ConcurrentSameHost(t *testing.T) {
 	}
 	t.Logf("post-race state: feed A favicon_url=%s, feed B favicon_url=%s, disk=%v", urlA, urlB, diskFiles)
 
-	// 4. Strong invariant: at most one file should exist for the shared
-	//    slug (removeOld is supposed to garbage-collect old extensions).
-	//    If we observe TWO files for the same slug, that means each
-	//    goroutine wrote its own ext and neither removeOld() saw the
-	//    other's file in time — the directory is now polluted.
+	// 4. Strong invariant: exactly one file should exist for the shared slug.
+	//    singleflight.Do coalesces concurrent fetches for the same host so
+	//    only one goroutine writes to disk; the second caller receives the
+	//    first caller's result. If two files appear, singleflight
+	//    deduplication is broken and the directory is polluted.
 	matches, _ := filepath.Glob(filepath.Join(faviconsDir, slug+".*"))
-	if len(matches) > 1 {
-		t.Errorf("expected at most 1 favicon file for slug %q after concurrent fetch, got %d: %v",
+	if len(matches) != 1 {
+		t.Errorf("expected exactly 1 favicon file for slug %q after concurrent fetch, got %d: %v",
 			slug, len(matches), matches)
 	}
 

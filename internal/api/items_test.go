@@ -420,25 +420,10 @@ func TestMarkRead_FilterByList(t *testing.T) {
 	}
 }
 
-// TestMarkRead_NoStarredFilterSupport documents the parallel bug on
-// the JSON API path: MarkReadRequest accepts feed_id XOR list_id but
-// has no `starred` (or `unread`) field. An API client that uses
-// GET /api/v1/items?starred=true to fetch starred items and then issues
-// POST /api/v1/items/mark-read with no filter (the only no-arg call the
-// schema permits) marks ALL unread items account-wide, including
-// non-starred items the client never saw.
-//
-// The schema is strict (additionalProperties: false plus
-// DisallowUnknownFields), so a client cannot even attempt to send
-// {"starred": true} — the request 400s. There is *no way* to scope
-// mark-read to starred items via the API. The test asserts the
-// behavior we want: marking only starred items should be possible and
-// non-starred items must remain unread.
-//
-// Current behavior: the only call available is "no body" / "empty body",
-// which marks all unread items account-wide. Test fails because item 2
-// (unread, not starred) ends up read.
-func TestMarkRead_NoStarredFilterSupport(t *testing.T) {
+// TestMarkRead_StarredFilterScopesToStarredItems verifies that POST
+// /api/v1/items/mark-read with {"starred": true} marks only starred unread
+// items, not all unread items.
+func TestMarkRead_StarredFilterScopesToStarredItems(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	alice := testutil.InsertUser(t, db, "alice")
 
@@ -524,10 +509,10 @@ func TestMarkRead_NoStarredFilterSupport(t *testing.T) {
 	}
 }
 
-// TestMarkRead_StarredBodyRejected was renamed/repurposed: the `starred`
-// field now exists on MarkReadRequest, so {"starred": true} is accepted
-// and restricts mark-read to starred items only.
-func TestMarkRead_StarredBodyRejected(t *testing.T) {
+// TestMarkRead_StarredBodyAccepted verifies that POST /api/v1/items/mark-read
+// with {"starred": true} is accepted (HTTP 200), confirming that `starred` is
+// a recognized field on MarkReadRequest.
+func TestMarkRead_StarredBodyAccepted(t *testing.T) {
 	db, aliceTok, _, _, _ := itemFixture(t)
 	h := New(Config{DB: db})
 

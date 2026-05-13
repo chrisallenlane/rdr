@@ -12,18 +12,10 @@ import (
 	"github.com/chrisallenlane/rdr/internal/testutil"
 )
 
-// TestTriggerSyncDBCloseRaceProducesErrors (name preserved for test-history
-// continuity) verifies that the goroutine spawned by Poller.TriggerSync is
-// tracked by the background.Group so that bg.Wait() blocks until the poll
-// cycle finishes. This ensures the DB is never closed underneath an in-flight
-// sync.
-//
-// The test uses a slow feed server to hold the poll goroutine open, then:
-//  1. Confirms bg.Wait() blocks while the poll is in flight.
-//  2. Releases the feed server.
-//  3. Confirms bg.Wait() unblocks after the goroutine completes.
-//  4. Confirms the DB is still open (no goroutine ran against a closed handle).
-func TestTriggerSyncDBCloseRaceProducesErrors(t *testing.T) {
+// TestTriggerSync_BackgroundGoroutineTracked verifies that the goroutine
+// spawned by Poller.TriggerSync is registered with the background.Group, so
+// bg.Wait() blocks until the poll cycle finishes.
+func TestTriggerSync_BackgroundGoroutineTracked(t *testing.T) {
 	release := make(chan struct{})
 	hits := make(chan struct{}, 4)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
