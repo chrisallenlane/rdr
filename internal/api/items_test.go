@@ -491,12 +491,10 @@ func TestMarkRead_NoStarredFilterSupport(t *testing.T) {
 		t.Fatalf("GET /api/v1/items?starred=true: got %d items, want 1", len(visible))
 	}
 
-	// Mark-read with empty body — the only no-filter call the schema
-	// permits (and the only way a client viewing the starred-only list
-	// can mark "what they see" as read).
+	// Mark-read scoped to starred items using the new field.
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/v1/items/mark-read",
-		aliceTok, "{}"))
+		aliceTok, `{"starred": true}`))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("mark-read: status=%d body=%q", rec.Code, rec.Body.String())
 	}
@@ -511,16 +509,24 @@ func TestMarkRead_NoStarredFilterSupport(t *testing.T) {
 		t.Fatalf("query plain-unread: %v", err)
 	}
 	if item2Read != 0 {
-		t.Errorf("non-starred item read = %d, want 0 (BUG: API offers no starred filter on mark-read; empty body marks ALL unread account-wide)", item2Read)
+		t.Errorf("non-starred item read = %d, want 0", item2Read)
+	}
+
+	// The starred item must now be read.
+	var item1Read int
+	if err := db.QueryRow(
+		`SELECT read FROM items WHERE guid = 'starred-unread'`,
+	).Scan(&item1Read); err != nil {
+		t.Fatalf("query starred-unread: %v", err)
+	}
+	if item1Read != 1 {
+		t.Errorf("starred item read = %d, want 1", item1Read)
 	}
 }
 
-// TestMarkRead_StarredBodyRejected documents that the strict-mode JSON
-// decoder rejects any attempt by a client to scope mark-read by starred
-// state — proving there is no API-level path to do this. This is paired
-// with TestMarkRead_NoStarredFilterSupport: together they show the bug
-// is structural (the schema is missing the field), not just an
-// implementation oversight.
+// TestMarkRead_StarredBodyRejected was renamed/repurposed: the `starred`
+// field now exists on MarkReadRequest, so {"starred": true} is accepted
+// and restricts mark-read to starred items only.
 func TestMarkRead_StarredBodyRejected(t *testing.T) {
 	db, aliceTok, _, _, _ := itemFixture(t)
 	h := New(Config{DB: db})
@@ -528,10 +534,8 @@ func TestMarkRead_StarredBodyRejected(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/v1/items/mark-read",
 		aliceTok, `{"starred": true}`))
-	// 400 today, because DisallowUnknownFields trips on "starred". If a
-	// future commit adds the field to MarkReadRequest, this test must be
-	// updated to assert correct filtering instead.
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("status=%d, want 400 (current schema has no `starred` field on MarkReadRequest)", rec.Code)
+	// Now 200: the schema has the `starred` field and the handler uses it.
+	if rec.Code != http.StatusOK {
+		t.Errorf("status=%d, want 200 (`starred` field is now part of MarkReadRequest)", rec.Code)
 	}
 }

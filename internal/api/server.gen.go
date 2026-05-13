@@ -142,6 +142,12 @@ type MarkReadRequest struct {
 
 	// ListId Restrict the mark-read to items in feeds belonging to this list.
 	ListId *int64 `json:"list_id,omitempty"`
+
+	// Starred If true, restrict the mark-read to starred items only. Useful for a client that displays the starred-only view and wants to mark only those items as read.
+	Starred *bool `json:"starred,omitempty"`
+
+	// Unread If true, restrict to unread items only. Redundant with the mark-read semantics (only unread items are ever changed) but provided for symmetry with the GET /items filter set.
+	Unread *bool `json:"unread,omitempty"`
 }
 
 // MarkReadResponse defines model for MarkReadResponse.
