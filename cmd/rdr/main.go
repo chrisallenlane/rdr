@@ -82,14 +82,19 @@ func main() {
 	// Shutdown order:
 	//   1. Stop accepting new HTTP requests (Shutdown drains in-flight ones).
 	//   2. Wait for the periodic poller loop to exit.
-	//   3. Wait for all background goroutines (OPML, AddFeed, TriggerSync)
-	//      to finish — they need the DB still open.
-	//   4. defer db.Close() runs last.
+	//   3. Close the background.Group so any handler that outlived
+	//      Shutdown's deadline can no longer enqueue new work — its
+	//      late s.bg.Go calls become no-ops instead of racing the
+	//      deferred db.Close.
+	//   4. Wait for all background goroutines (OPML, AddFeed, TriggerSync)
+	//      already in flight to finish — they need the DB still open.
+	//   5. defer db.Close() runs last.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown error", "error", err)
 	}
 	wg.Wait()
+	bg.Close()
 	bg.Wait()
 }
