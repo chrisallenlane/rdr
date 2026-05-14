@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/discover"
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
@@ -20,6 +21,8 @@ import (
 
 // Server holds application dependencies and implements http.Handler.
 type Server struct {
+	ctx          context.Context   // server-scoped context; cancelled on shutdown
+	bg           *background.Group // tracks server-scoped background goroutines
 	db           *sql.DB
 	templates    map[string]*template.Template
 	mux          *http.ServeMux
@@ -39,9 +42,20 @@ type PageData struct {
 }
 
 // NewServer initialises the server, parses templates, registers routes,
-// and returns a ready-to-use *Server.
-func NewServer(db *sql.DB, staticFiles fs.FS, templateFiles fs.FS, faviconsDir string) (*Server, error) {
+// and returns a ready-to-use *Server. ctx is the server-scoped context
+// that is cancelled on shutdown; bg tracks background goroutines so the
+// caller can wait for them before closing the database.
+func NewServer(
+	ctx context.Context,
+	bg *background.Group,
+	db *sql.DB,
+	staticFiles fs.FS,
+	templateFiles fs.FS,
+	faviconsDir string,
+) (*Server, error) {
 	s := &Server{
+		ctx:          ctx,
+		bg:           bg,
 		db:           db,
 		mux:          http.NewServeMux(),
 		staticFS:     staticFiles,

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/chrisallenlane/rdr/internal/dbutil"
 	"github.com/chrisallenlane/rdr/internal/middleware"
@@ -148,9 +149,13 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 
-	// Parse optional filter params from the form.
+	// Parse optional filter params from the form. For unread/starred we
+	// also accept the Referer URL as a fallback so that a client not yet
+	// sending hidden inputs still gets correct scoping.
 	filterFeed := parsePositiveInt64(r.FormValue("feed"))
 	filterList := parsePositiveInt64(r.FormValue("list"))
+	filterUnread := formBoolWithRefererFallback(r, "unread")
+	filterStarred := formBoolWithRefererFallback(r, "starred")
 
 	// Validate ownership of the specified feed.
 	if filterFeed > 0 {
@@ -167,7 +172,9 @@ func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build the UPDATE query reusing the same filter logic as the items list.
-	where, args := dbutil.BuildItemFilter(user.ID, filterFeed, filterList, false, false)
+	where, args := dbutil.BuildItemFilter(
+		user.ID, filterFeed, filterList, filterUnread, filterStarred,
+	)
 	query := `UPDATE items SET read = 1, read_at = datetime('now')
 		WHERE read = 0 AND id IN (
 			SELECT i.id FROM items i JOIN feeds f ON i.feed_id = f.id WHERE ` + where + `
@@ -186,7 +193,9 @@ func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isHTMXRequest(r) {
-		data, err := s.queryItemsPageData(user.ID, 1, filterFeed, filterList, false, false)
+		data, err := s.queryItemsPageData(
+			user.ID, 1, filterFeed, filterList, filterUnread, filterStarred,
+		)
 		if err != nil {
 			s.internalError(w, r, "querying items for HTMX", err)
 			return
@@ -201,14 +210,49 @@ func (s *Server) handleMarkRead(w http.ResponseWriter, r *http.Request) {
 
 	setFlash(w, r, fmt.Sprintf("Marked %d items as read.", affected))
 
-	// Redirect back preserving filters.
-	redirect := "/items"
-	if filterFeed > 0 {
-		redirect = fmt.Sprintf("/items?feed=%d", filterFeed)
-	} else if filterList > 0 {
-		redirect = fmt.Sprintf("/items?list=%d", filterList)
-	}
+	// Redirect back preserving all active filters.
+	redirect := buildItemsRedirect(filterFeed, filterList, filterUnread, filterStarred)
 	http.Redirect(w, r, redirect, http.StatusSeeOther)
+}
+
+// formBoolWithRefererFallback reads a "1" flag from the POST form body.
+// If the key is absent from the form, it falls back to the Referer URL's
+// query params so that legacy forms without the hidden input still work.
+func formBoolWithRefererFallback(r *http.Request, key string) bool {
+	if v := r.FormValue(key); v != "" {
+		return v == "1"
+	}
+	// Fall back to the Referer URL query string.
+	ref, err := url.Parse(r.Header.Get("Referer"))
+	if err != nil || ref == nil {
+		return false
+	}
+	return ref.Query().Get(key) == "1"
+}
+
+// buildItemsRedirect constructs the /items redirect URL preserving all
+// active filter parameters.
+func buildItemsRedirect(
+	filterFeed, filterList int64,
+	filterUnread, filterStarred bool,
+) string {
+	q := url.Values{}
+	if filterFeed > 0 {
+		q.Set("feed", fmt.Sprintf("%d", filterFeed))
+	}
+	if filterList > 0 {
+		q.Set("list", fmt.Sprintf("%d", filterList))
+	}
+	if filterUnread {
+		q.Set("unread", "1")
+	}
+	if filterStarred {
+		q.Set("starred", "1")
+	}
+	if len(q) == 0 {
+		return "/items"
+	}
+	return "/items?" + q.Encode()
 }
 
 // itemsHeading returns the page heading for the items list based on active filters.

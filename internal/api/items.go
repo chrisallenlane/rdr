@@ -176,23 +176,24 @@ func (s *Server) MarkItemsRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	where, args := dbutil.BuildItemFilter(
+		uid,
+		derefInt64(body.FeedId),
+		derefInt64(body.ListId),
+		derefBool(body.Unread),
+		derefBool(body.Starred),
+	)
+
 	query := `UPDATE items SET read = 1, read_at = ?
 	            WHERE read = 0
-	              AND feed_id IN (SELECT id FROM feeds WHERE user_id = ?`
-	args := []any{time.Now().UTC().Format(time.RFC3339), uid}
+	              AND id IN (
+	                SELECT i.id FROM items i
+	                  JOIN feeds f ON i.feed_id = f.id
+	                 WHERE ` + where + `
+	              )`
+	fullArgs := append([]any{time.Now().UTC().Format(time.RFC3339)}, args...)
 
-	switch {
-	case body.FeedId != nil:
-		query += ` AND id = ?`
-		args = append(args, *body.FeedId)
-	case body.ListId != nil:
-		query += ` AND list_id = ?
-		             AND ? IN (SELECT id FROM lists WHERE user_id = ?)`
-		args = append(args, *body.ListId, *body.ListId, uid)
-	}
-	query += `)`
-
-	res, err := s.db.Exec(query, args...)
+	res, err := s.db.Exec(query, fullArgs...)
 	if err != nil {
 		writeProblem(w, http.StatusInternalServerError, "", "", "")
 		return

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	rdr "github.com/chrisallenlane/rdr"
+	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/config"
 	"github.com/chrisallenlane/rdr/internal/database"
 	"github.com/chrisallenlane/rdr/internal/handler"
@@ -33,7 +34,15 @@ func main() {
 	}
 	defer func() { _ = db.Close() }()
 
-	srv, err := handler.NewServer(db, rdr.StaticFiles, rdr.TemplateFiles, cfg.FaviconsDir)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// bg tracks server-scoped background goroutines (OPML imports,
+	// API AddFeed fetches, TriggerSync calls). Shutdown waits for all
+	// of these before closing the database.
+	var bg background.Group
+
+	srv, err := handler.NewServer(ctx, &bg, db, rdr.StaticFiles, rdr.TemplateFiles, cfg.FaviconsDir)
 	if err != nil {
 		slog.Error("failed to create server", "error", err)
 		os.Exit(1)
@@ -47,12 +56,10 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	// Start background feed poller.
+	// Start background feed poller. The periodic Start() loop is tracked
+	// via wg; user-triggered TriggerSync goroutines are tracked via bg.
 	var wg sync.WaitGroup
-	p := poller.NewPoller(ctx, db, cfg.PollInterval, cfg.RetentionDays, cfg.FaviconsDir)
+	p := poller.NewPoller(ctx, &bg, db, cfg.PollInterval, cfg.RetentionDays, cfg.FaviconsDir)
 	srv.SetSyncFunc(p.TriggerSync)
 	srv.SetSyncStatusFunc(p.IsSyncing)
 	wg.Add(1)
@@ -72,12 +79,22 @@ func main() {
 	<-ctx.Done()
 	slog.Info("shutting down")
 
-	// Wait for poller to finish its current cycle.
-	wg.Wait()
-
+	// Shutdown order:
+	//   1. Stop accepting new HTTP requests (Shutdown drains in-flight ones).
+	//   2. Wait for the periodic poller loop to exit.
+	//   3. Close the background.Group so any handler that outlived
+	//      Shutdown's deadline can no longer enqueue new work — its
+	//      late s.bg.Go calls become no-ops instead of racing the
+	//      deferred db.Close.
+	//   4. Wait for all background goroutines (OPML, AddFeed, TriggerSync)
+	//      already in flight to finish — they need the DB still open.
+	//   5. defer db.Close() runs last.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown error", "error", err)
 	}
+	wg.Wait()
+	bg.Close()
+	bg.Wait()
 }

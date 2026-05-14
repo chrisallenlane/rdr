@@ -2,7 +2,9 @@ package handler
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -1069,6 +1071,64 @@ func TestHandleImportOPML_HTTPScheme(t *testing.T) {
 	if count != 2 {
 		t.Errorf("feed count = %d, want 2 (both http and https)", count)
 	}
+}
+
+// TestResolveListID_TOCTOU_SilentNullFallback documents the structural
+// TOCTOU in resolveListID (internal/handler/opml.go). The resolver runs
+// two separate statements:
+//
+//	INSERT OR IGNORE INTO lists (user_id, name) VALUES (?, ?)
+//	SELECT id        FROM lists WHERE user_id = ? AND name = ?
+//
+// If the list row is deleted between those two statements (concurrent
+// DELETE from another request), the SELECT returns sql.ErrNoRows.
+// resolveListID then returns the error; handleImportOPML logs it and
+// falls through to listID = nil, silently importing the feed with
+// list_id = NULL.
+//
+// This is structurally a bug but practically unfireable: rdr is a
+// single-user homelab app, the race window is microseconds, and the
+// only way to trigger it is concurrent OPML-import + DELETE-list
+// requests from the same user. Logged as a low-severity finding for
+// awareness; this test pins the SQL-level behavior the production
+// code relies on.
+//
+// Contrast with api/lists.go AddFeedToList, which explicitly folds the
+// ownership check into a single statement via a subquery, citing TOCTOU
+// avoidance. The OPML handler diverges from that established pattern.
+func TestResolveListID_TOCTOU_SilentNullFallback(t *testing.T) {
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "testuser", "testpass1")
+
+	// Step 1: INSERT OR IGNORE — succeeds, creates the list row.
+	if _, err := s.db.Exec(
+		"INSERT OR IGNORE INTO lists (user_id, name) VALUES (?, ?)",
+		userID, "Tech",
+	); err != nil {
+		t.Fatalf("INSERT OR IGNORE lists: %v", err)
+	}
+
+	// Step 2 (injected): concurrent DELETE — simulates the racing
+	// request that lands between the two statements of resolveListID.
+	if _, err := s.db.Exec(
+		"DELETE FROM lists WHERE user_id = ? AND name = ?",
+		userID, "Tech",
+	); err != nil {
+		t.Fatalf("racing DELETE lists: %v", err)
+	}
+
+	// Step 3: SELECT id — production code expects to find the just-
+	// inserted row, but the racing DELETE has removed it. SELECT
+	// returns sql.ErrNoRows. The handler logs this and uses listID=nil.
+	var id int64
+	err := s.db.QueryRow(
+		"SELECT id FROM lists WHERE user_id = ? AND name = ?",
+		userID, "Tech",
+	).Scan(&id)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("SELECT id: err = %v, want sql.ErrNoRows", err)
+	}
+
 }
 
 func TestCollectFeedsWithFolder(t *testing.T) {

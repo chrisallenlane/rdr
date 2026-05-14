@@ -264,6 +264,104 @@ func TestHandleAddFeedToList(t *testing.T) {
 			t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 		}
 	})
+
+	// TOCTOU divergence probe. The HTML handler verifies list ownership
+	// and feed ownership in two separate SELECT statements, then issues a
+	// third UPDATE that only constrains by (feed.id, feed.user_id) — list
+	// ownership is NOT re-checked inside the WHERE clause. The API
+	// equivalent (AddFeedToList in internal/api/lists.go) folds the
+	// list-ownership check into the UPDATE's WHERE via a subquery, making
+	// the operation atomic.
+	//
+	// This test isolates the bare UPDATE statement to demonstrate the
+	// structural difference: the HTML handler's UPDATE happily binds a
+	// feed to any list_id the SELECT-check would have approved, without
+	// re-validating ownership at write time. The FK constraint
+	// (feeds.list_id REFERENCES lists(id) ON DELETE SET NULL) is what
+	// prevents lasting damage when the list is concurrently deleted —
+	// the UPDATE fails with "FOREIGN KEY constraint failed" rather than
+	// quietly corrupting state. The observable user-visible effect of a
+	// real race is therefore an intermittent 500, not data corruption.
+	//
+	// Severity is LOW under the homelab/single-user threat model: the
+	// race window is microseconds and cross-user attack is not in scope.
+	// The finding is the structural divergence with the API handler, not
+	// a fireable exploit.
+	t.Run("HTML UPDATE statement does not re-check list ownership (TOCTOU shape)", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
+
+		// The exact UPDATE that handleAddFeedToList issues, bound to a
+		// list_id (99999) that does not exist. The HTML handler's UPDATE
+		// WHERE clause does not constrain by list ownership, so absent
+		// the FK constraint this statement would succeed and bind the
+		// feed to a phantom list. The FK constraint catches it.
+		_, err := s.db.Exec(
+			"UPDATE feeds SET list_id = ? WHERE id = ? AND user_id = ?",
+			99999, feedID, userID,
+		)
+		if err == nil {
+			t.Fatal("UPDATE to nonexistent list_id unexpectedly succeeded; FK constraint may be off")
+		}
+		if !strings.Contains(err.Error(), "FOREIGN KEY") {
+			t.Errorf("expected FK constraint failure, got: %v", err)
+		}
+
+		// Contrast: the API's single-statement form refuses the UPDATE
+		// at the WHERE-clause level (RowsAffected=0) rather than relying
+		// on the FK as backstop. The list-existence subquery makes the
+		// operation idempotent and avoids triggering a constraint error
+		// in the concurrent-delete race window.
+		res, err := s.db.Exec(
+			`UPDATE feeds
+			    SET list_id = ?
+			  WHERE id = ?
+			    AND user_id = ?
+			    AND ? IN (SELECT id FROM lists WHERE user_id = ?)`,
+			99999, feedID, userID, 99999, userID,
+		)
+		if err != nil {
+			t.Fatalf("API-shape UPDATE errored unexpectedly: %v", err)
+		}
+		n, _ := res.RowsAffected()
+		if n != 0 {
+			t.Errorf("API-shape UPDATE RowsAffected = %d, want 0 (list does not exist)", n)
+		}
+	})
+
+	// Pins the behavior when a feed is added to a list that no longer exists:
+	// verifyOwnership fails and the handler returns 404. Documents the
+	// API-vs-HTML response-shape divergence for the missing-list case (the
+	// API handler returns 204 because RowsAffected=0 is an accepted outcome).
+	t.Run("add_feed_to_deleted_list_returns_404", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		listID := insertTestList(t, s, userID, "My List")
+		feedID := insertTestFeed(t, s, userID, "https://example.com/feed.xml")
+		if _, err := s.db.Exec("DELETE FROM lists WHERE id = ?", listID); err != nil {
+			t.Fatalf("deleting list: %v", err)
+		}
+
+		form := url.Values{"feed_id": {fmt.Sprintf("%d", feedID)}}
+		req := authedRequest(
+			t, s, userID,
+			http.MethodPost,
+			fmt.Sprintf("/lists/%d/feeds", listID),
+		)
+		req.Body = io.NopCloser(strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+
+		// Current behavior: verifyOwnership("lists", ...) fails first,
+		// so the handler returns 404. (The "true" race would return
+		// 500 because the FK fires inside the UPDATE.) Pin the 404.
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d (list deleted before call)", rec.Code, http.StatusNotFound)
+		}
+	})
 }
 
 // TestHandleRemoveFeedFromList covers POST /lists/{id}/feeds/{feedID}/delete.

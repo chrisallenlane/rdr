@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/chrisallenlane/rdr/internal/model"
@@ -560,6 +561,198 @@ func TestDownload_ExactlyMaxSize(t *testing.T) {
 	if err != nil {
 		t.Errorf("body of exactly maxSize should succeed, got error: %v", err)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Concurrent Fetch race
+// ---------------------------------------------------------------------------
+
+// TestFetch_ConcurrentSameHost exercises the documented design that "two
+// feeds at the same host produce the same slug" (see Slug godoc) under
+// concurrent invocation — the exact pattern produced by the poller's
+// 10-worker fan-out when a user subscribes to multiple feeds at the same
+// host (e.g. two YouTube channels, multiple subreddits, etc.).
+//
+// Two goroutines call Fetch on two distinct feeds whose siteURL share a
+// host. Each feed advertises a different parsed.Image.URL (different file
+// extension), so they race on:
+//
+//  1. download() — different bytes, different Content-Type
+//  2. removeOld() — each tries to delete the *other's* file
+//  3. os.WriteFile() — different paths (different ext) sharing the slug
+//  4. UPDATE feeds SET favicon_url — same column on different rows
+//
+// At a minimum we want -race to be clean. Stronger: the post-state must be
+// self-consistent — for each feed, the favicon file at slug+expectedExt
+// should still exist on disk.
+func TestFetch_ConcurrentSameHost(t *testing.T) {
+	// Two distinct image payloads. PNG and GIF are unambiguously detectable
+	// via http.DetectContentType so the extensions diverge.
+	pngData := []byte(
+		"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00" +
+			"\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx" +
+			"\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00" +
+			"\x00IEND\xaeB`\x82",
+	)
+	// Minimal GIF87a (1x1 transparent).
+	gifData := []byte("GIF87a\x01\x00\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/a.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(pngData)
+		case "/b.gif":
+			w.Header().Set("Content-Type", "image/gif")
+			_, _ = w.Write(gifData)
+		case "/favicon.ico":
+			w.Header().Set("Content-Type", "image/x-icon")
+			_, _ = w.Write([]byte("\x00\x00\x01\x00")) // minimal ICO header
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	db := testutil.OpenTestDB(t)
+	userID := testutil.InsertUser(t, db, "testuser")
+
+	// Two feeds at the same host (srv.URL). The slug derives from host only,
+	// so both feeds collide on the same slug.
+	feedAURL := srv.URL + "/feed-a.xml"
+	feedBURL := srv.URL + "/feed-b.xml"
+	siteURL := srv.URL
+
+	insertFeed := func(url string) int64 {
+		t.Helper()
+		res, err := db.Exec(
+			`INSERT INTO feeds (user_id, url, site_url, title) VALUES (?, ?, ?, ?)`,
+			userID, url, siteURL, "Test Feed",
+		)
+		if err != nil {
+			t.Fatalf("insert feed: %v", err)
+		}
+		id, _ := res.LastInsertId()
+		return id
+	}
+
+	feedAID := insertFeed(feedAURL)
+	feedBID := insertFeed(feedBURL)
+
+	feedA := &model.Feed{ID: feedAID, UserID: userID, URL: feedAURL, SiteURL: siteURL}
+	feedB := &model.Feed{ID: feedBID, UserID: userID, URL: feedBURL, SiteURL: siteURL}
+
+	// Distinct image URLs so the two goroutines write files with different
+	// extensions but the same slug — each will try to removeOld() the
+	// other's file.
+	parsedA := &gofeed.Feed{
+		Image: &gofeed.Image{URL: srv.URL + "/a.png"},
+		Link:  siteURL,
+	}
+	parsedB := &gofeed.Feed{
+		Image: &gofeed.Image{URL: srv.URL + "/b.gif"},
+		Link:  siteURL,
+	}
+
+	faviconsDir := t.TempDir()
+
+	// Verify pre-state: the slugs really are identical.
+	slug := Slug(feedA.SiteURL, feedA.URL)
+	slugB := Slug(feedB.SiteURL, feedB.URL)
+	if slug != slugB {
+		t.Fatalf("test setup: feeds should share a slug, got %q vs %q", slug, slugB)
+	}
+
+	// Fire both Fetch calls concurrently. Use a starting gate so they
+	// genuinely race rather than serializing one-after-the-other.
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		Fetch(context.Background(), db, feedA, faviconsDir, parsedA)
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		Fetch(context.Background(), db, feedB, faviconsDir, parsedB)
+	}()
+	close(start)
+	wg.Wait()
+
+	// Post-state assertions.
+
+	// 1. Both DB rows should have a favicon_url set.
+	var urlA, urlB string
+	if err := db.QueryRow(`SELECT favicon_url FROM feeds WHERE id = ?`, feedAID).Scan(&urlA); err != nil {
+		t.Fatalf("query feed A: %v", err)
+	}
+	if err := db.QueryRow(`SELECT favicon_url FROM feeds WHERE id = ?`, feedBID).Scan(&urlB); err != nil {
+		t.Fatalf("query feed B: %v", err)
+	}
+	if urlA == "" || urlB == "" {
+		t.Fatalf("expected both feeds to have favicon_url set, got A=%q B=%q", urlA, urlB)
+	}
+
+	// 2. The favicon file should exist on disk (some favicon for this slug).
+	if !FileExists(faviconsDir, slug) {
+		t.Fatalf("expected favicon file for slug %q after concurrent fetch, none found", slug)
+	}
+
+	// 3. Per-feed disk consistency: each feed's recorded favicon_url maps
+	//    to a specific content-type, which maps to a specific extension.
+	//    The file on disk should reflect *some* feed's choice, but more
+	//    importantly: the post-state should NOT have orphan files or
+	//    inconsistent metadata. List what's actually on disk.
+	entries, _ := os.ReadDir(faviconsDir)
+	var diskFiles []string
+	for _, e := range entries {
+		diskFiles = append(diskFiles, e.Name())
+	}
+	t.Logf("post-race state: feed A favicon_url=%s, feed B favicon_url=%s, disk=%v", urlA, urlB, diskFiles)
+
+	// 4. Strong invariant: exactly one file should exist for the shared slug.
+	//    singleflight.Do coalesces concurrent fetches for the same host so
+	//    only one goroutine writes to disk; the second caller receives the
+	//    first caller's result. If two files appear, singleflight
+	//    deduplication is broken and the directory is polluted.
+	matches, _ := filepath.Glob(filepath.Join(faviconsDir, slug+".*"))
+	if len(matches) != 1 {
+		t.Errorf("expected exactly 1 favicon file for slug %q after concurrent fetch, got %d: %v",
+			slug, len(matches), matches)
+	}
+
+	// 5. Strong invariant: each feed's favicon_url should agree with the
+	//    file extension on disk for its declared content-type. After the
+	//    race, the winner's content-type sets the extension; the loser's
+	//    favicon_url column still points to a URL whose content-type
+	//    disagrees with what's actually saved.
+	//
+	//    For each feed, derive the expected ext from its favicon_url and
+	//    confirm a file with that ext exists.
+	checkConsistency := func(label string, faviconURL string) {
+		t.Helper()
+		var expectedExt string
+		switch {
+		case strings.HasSuffix(faviconURL, ".png"):
+			expectedExt = ".png"
+		case strings.HasSuffix(faviconURL, ".gif"):
+			expectedExt = ".gif"
+		case strings.HasSuffix(faviconURL, ".ico"):
+			expectedExt = ".ico"
+		default:
+			t.Logf("%s: favicon_url %q has unrecognized extension; skipping consistency check", label, faviconURL)
+			return
+		}
+		want := filepath.Join(faviconsDir, slug+expectedExt)
+		if _, err := os.Stat(want); err != nil {
+			t.Errorf("%s: favicon_url=%q implies file %q but it doesn't exist (err=%v); disk has %v",
+				label, faviconURL, want, err, diskFiles)
+		}
+	}
+	checkConsistency("feedA", urlA)
+	checkConsistency("feedB", urlB)
 }
 
 func FuzzExtensionFromContentType(f *testing.F) {

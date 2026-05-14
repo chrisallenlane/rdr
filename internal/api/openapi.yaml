@@ -827,6 +827,18 @@ components:
           format: int64
           minimum: 1
           description: Restrict the mark-read to items in feeds belonging to this list.
+        unread:
+          type: boolean
+          description: >
+            If true, restrict to unread items only. Redundant with the
+            mark-read semantics (only unread items are ever changed) but
+            provided for symmetry with the GET /items filter set.
+        starred:
+          type: boolean
+          description: >
+            If true, restrict the mark-read to starred items only. Useful
+            for a client that displays the starred-only view and wants to
+            mark only those items as read.
 
     MarkReadResponse:
       type: object

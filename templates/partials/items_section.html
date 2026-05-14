@@ -3,7 +3,7 @@
     <div class="items-header">
         <h1>{{.Heading}}</h1>
         <nav>
-            {{- if .Items}}{{if gt .UnreadCount 0}} <form method="post" action="/items/mark-read" class="inline-form" hx-post="/items/mark-read" hx-target="#items-section" hx-swap="outerHTML">{{if .FilterFeed}}<input type="hidden" name="feed" value="{{.FilterFeed}}">{{end}}{{if .FilterList}}<input type="hidden" name="list" value="{{.FilterList}}">{{end}}[ <button type="submit" class="link-button">mark all as read</button> ]</form>{{end}}{{end}}
+            {{- if .Items}}{{if gt .UnreadCount 0}} <form method="post" action="/items/mark-read" class="inline-form" hx-post="/items/mark-read" hx-target="#items-section" hx-swap="outerHTML">{{if .FilterFeed}}<input type="hidden" name="feed" value="{{.FilterFeed}}">{{end}}{{if .FilterList}}<input type="hidden" name="list" value="{{.FilterList}}">{{end}}{{if .FilterUnread}}<input type="hidden" name="unread" value="1">{{end}}{{if .FilterStarred}}<input type="hidden" name="starred" value="1">{{end}}[ <button type="submit" class="link-button">mark all as read</button> ]</form>{{end}}{{end}}
             {{- if not .FilterUnread}} [ <a href="/items?unread=1{{if .FilterFeed}}&feed={{.FilterFeed}}{{end}}{{if .FilterList}}&list={{.FilterList}}{{end}}">unread only</a> ]{{end}}
             {{- if not .FilterStarred}} [ <a href="/items?starred=1{{if .FilterFeed}}&feed={{.FilterFeed}}{{end}}{{if .FilterList}}&list={{.FilterList}}{{end}}">starred only</a> ]{{end}}
             {{- if or .FilterFeed .FilterUnread .FilterStarred .FilterList}} [ <a href="/items">clear filters</a> ]{{end}}

@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -307,6 +309,44 @@ func TestAdjacentItemID(t *testing.T) {
 			t.Errorf(
 				"adjacentItemID(next) = %d, want nil (other user's item leaked)",
 				*nextGot,
+			)
+		}
+	})
+
+	// adjacentItemID currently swallows every error from Scan() — including
+	// real SQL errors like "database is closed" — and returns nil
+	// indistinguishably from sql.ErrNoRows. The user loses the prev/next
+	// link with no log, no telemetry, no signal of any kind. This test
+	// induces a non-ErrNoRows error and asserts that the function emits a
+	// log line so the failure is observable.
+	t.Run("non-ErrNoRows error is logged, not silently swallowed", func(t *testing.T) {
+		s := newTestServer(t)
+		userID := createTestUser(t, s, "testuser", "testpass1")
+		_, itemIDs := insertFeedAndItems(t, s, userID, []string{pubMiddle})
+
+		// Capture slog output for the duration of the call.
+		var logBuf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})))
+		defer slog.SetDefault(prev)
+
+		// Force a non-ErrNoRows error by closing the DB before the call.
+		if err := s.db.Close(); err != nil {
+			t.Fatalf("closing db: %v", err)
+		}
+
+		got := s.adjacentItemID(userID, pubMiddle, itemIDs[0], true)
+		if got != nil {
+			t.Errorf("adjacentItemID on closed DB = %d, want nil", *got)
+		}
+
+		if logBuf.Len() == 0 {
+			t.Error(
+				"adjacentItemID swallowed a non-ErrNoRows error " +
+					"(DB was closed) without logging — real errors are " +
+					"indistinguishable from 'no adjacent item'",
 			)
 		}
 	})

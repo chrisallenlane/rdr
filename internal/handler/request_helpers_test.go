@@ -203,6 +203,27 @@ func TestParseTime(t *testing.T) {
 			wantUTC: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
 		},
 		{
+			// This format is accepted ONLY by handler.parseTime — neither
+			// api.parseSQLiteTimestamp nor token.parseSQLiteTime accept it.
+			// No production write path currently emits this format, so the
+			// drift is unobservable. Pinned here so a future centralization
+			// (or a change that introduces this format on a write path)
+			// has explicit reference points across all three parsers.
+			name:    "T separator without zone (handler-only format)",
+			input:   sql.NullString{Valid: true, String: "2024-01-15T10:30:00"},
+			wantNil: false,
+			wantUTC: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		},
+		{
+			// time.RFC3339 in Go's stdlib is lenient about trailing
+			// fractional seconds; pinning to flag a future regression
+			// if the layout is swapped for one that isn't.
+			name:    "RFC 3339 with fractional seconds (stdlib lenient)",
+			input:   sql.NullString{Valid: true, String: "2024-01-15T10:30:00.123Z"},
+			wantNil: false,
+			wantUTC: time.Date(2024, 1, 15, 10, 30, 0, 123000000, time.UTC),
+		},
+		{
 			name:    "unparseable string",
 			input:   sql.NullString{Valid: true, String: "not-a-date"},
 			wantNil: true,

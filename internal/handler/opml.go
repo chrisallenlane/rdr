@@ -311,7 +311,8 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(newFeeds) > 0 {
 		msg += ". Feeds are being fetched in the background."
-		go s.fetchImportedFeeds(context.WithoutCancel(r.Context()), newFeeds)
+		feeds := newFeeds // capture for goroutine
+		s.bg.Go(func() { s.fetchImportedFeeds(s.ctx, feeds) })
 	} else {
 		msg += "."
 	}

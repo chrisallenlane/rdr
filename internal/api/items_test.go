@@ -419,3 +419,108 @@ func TestMarkRead_FilterByList(t *testing.T) {
 		t.Errorf("bob cross-user: marked=%d, want 0", resp.Marked)
 	}
 }
+
+// TestMarkRead_StarredFilterScopesToStarredItems verifies that POST
+// /api/v1/items/mark-read with {"starred": true} marks only starred unread
+// items, not all unread items.
+func TestMarkRead_StarredFilterScopesToStarredItems(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	alice := testutil.InsertUser(t, db, "alice")
+
+	res, err := db.Exec(
+		`INSERT INTO feeds (user_id, url, title) VALUES (?, ?, ?)`,
+		alice, "https://alice.example/feed", "Alice Blog",
+	)
+	if err != nil {
+		t.Fatalf("insert feed: %v", err)
+	}
+	aliceFeed, _ := res.LastInsertId()
+
+	// Two items:
+	//   - "starred-unread": unread AND starred — the only item that
+	//      GET /api/v1/items?starred=true returns.
+	//   - "plain-unread":   unread, NOT starred — invisible on the
+	//      starred view, must NOT be marked read.
+	rows := []struct {
+		guid    string
+		read    int
+		starred int
+	}{
+		{"starred-unread", 0, 1},
+		{"plain-unread", 0, 0},
+	}
+	for _, row := range rows {
+		if _, err := db.Exec(
+			`INSERT INTO items (feed_id, guid, title, read, starred, published_at)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			aliceFeed, row.guid, "Item", row.read, row.starred,
+			time.Now().Format(time.RFC3339),
+		); err != nil {
+			t.Fatalf("insert item %s: %v", row.guid, err)
+		}
+	}
+
+	aliceTok, _, err := token.Generate(db, alice, "alice-test", time.Time{})
+	if err != nil {
+		t.Fatalf("token: %v", err)
+	}
+
+	h := New(Config{DB: db})
+
+	// Confirm GET /api/v1/items?starred=true returns only the starred item.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodGet, "/api/v1/items?starred=true", aliceTok, ""))
+	var visible []Item
+	_ = json.Unmarshal(rec.Body.Bytes(), &visible)
+	if len(visible) != 1 {
+		t.Fatalf("GET /api/v1/items?starred=true: got %d items, want 1", len(visible))
+	}
+
+	// Mark-read scoped to starred items using the new field.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/v1/items/mark-read",
+		aliceTok, `{"starred": true}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("mark-read: status=%d body=%q", rec.Code, rec.Body.String())
+	}
+
+	// The non-starred item must still be unread — the client only
+	// "saw" the starred item and (logically) only intended to clear
+	// that one.
+	var item2Read int
+	if err := db.QueryRow(
+		`SELECT read FROM items WHERE guid = 'plain-unread'`,
+	).Scan(&item2Read); err != nil {
+		t.Fatalf("query plain-unread: %v", err)
+	}
+	if item2Read != 0 {
+		t.Errorf("non-starred item read = %d, want 0", item2Read)
+	}
+
+	// The starred item must now be read.
+	var item1Read int
+	if err := db.QueryRow(
+		`SELECT read FROM items WHERE guid = 'starred-unread'`,
+	).Scan(&item1Read); err != nil {
+		t.Fatalf("query starred-unread: %v", err)
+	}
+	if item1Read != 1 {
+		t.Errorf("starred item read = %d, want 1", item1Read)
+	}
+}
+
+// TestMarkRead_StarredBodyAccepted verifies that POST /api/v1/items/mark-read
+// with {"starred": true} is accepted (HTTP 200), confirming that `starred` is
+// a recognized field on MarkReadRequest.
+func TestMarkRead_StarredBodyAccepted(t *testing.T) {
+	db, aliceTok, _, _, _ := itemFixture(t)
+	h := New(Config{DB: db})
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, authedRequest(http.MethodPost, "/api/v1/items/mark-read",
+		aliceTok, `{"starred": true}`))
+	// Now 200: the schema has the `starred` field and the handler uses it.
+	if rec.Code != http.StatusOK {
+		t.Errorf("status=%d, want 200 (`starred` field is now part of MarkReadRequest)", rec.Code)
+	}
+}

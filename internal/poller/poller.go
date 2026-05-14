@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/model"
 )
 
@@ -18,6 +19,7 @@ const maxPollWorkers = 10
 type Poller struct {
 	db            *sql.DB
 	ctx           context.Context
+	bg            *background.Group
 	interval      time.Duration
 	retentionDays int
 	faviconsDir   string
@@ -27,9 +29,24 @@ type Poller struct {
 // NewPoller creates a new Poller with the given database, poll interval,
 // retention period (in days), and favicons directory path. A retentionDays
 // value of 0 disables pruning. The context controls the lifetime of all poll
-// operations, including manually triggered syncs.
-func NewPoller(ctx context.Context, db *sql.DB, interval time.Duration, retentionDays int, faviconsDir string) *Poller {
-	return &Poller{ctx: ctx, db: db, interval: interval, retentionDays: retentionDays, faviconsDir: faviconsDir}
+// operations, including manually triggered syncs. bg tracks goroutines
+// started by TriggerSync so graceful shutdown can wait for them.
+func NewPoller(
+	ctx context.Context,
+	bg *background.Group,
+	db *sql.DB,
+	interval time.Duration,
+	retentionDays int,
+	faviconsDir string,
+) *Poller {
+	return &Poller{
+		ctx:           ctx,
+		bg:            bg,
+		db:            db,
+		interval:      interval,
+		retentionDays: retentionDays,
+		faviconsDir:   faviconsDir,
+	}
 }
 
 // Start blocks until the poller's context is cancelled. It runs an immediate
@@ -57,12 +74,13 @@ func (p *Poller) IsSyncing() bool {
 // Returns true if a sync was started, false if one is already in progress.
 // It uses the application context (from NewPoller) rather than the caller's
 // context, because the caller is typically an HTTP handler whose context
-// is cancelled as soon as the response is sent.
+// is cancelled as soon as the response is sent. The goroutine is tracked
+// via the background Group so graceful shutdown waits for it.
 func (p *Poller) TriggerSync(_ context.Context) bool {
 	if p.syncing.Load() {
 		return false
 	}
-	go p.poll(p.ctx)
+	p.bg.Go(func() { p.poll(p.ctx) })
 	return true
 }
 

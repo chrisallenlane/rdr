@@ -18,7 +18,16 @@ import (
 	"github.com/chrisallenlane/rdr/internal/httpclient"
 	"github.com/chrisallenlane/rdr/internal/model"
 	"github.com/mmcdole/gofeed"
+	"golang.org/x/sync/singleflight"
 )
+
+// fetchGroup serializes per-slug favicon fetches across concurrent goroutines.
+// This prevents the check-then-act filesystem race that occurs when the
+// poller's worker pool processes multiple feeds from the same host
+// simultaneously (e.g. multiple YouTube channels, Substack feeds, etc.).
+// Package-level state is appropriate here: the group is a pure synchronization
+// primitive with no application state, and favicon is a single-process concern.
+var fetchGroup singleflight.Group
 
 // maxSize is the maximum number of bytes to download for a favicon.
 const maxSize = 1 << 20 // 1 MB
@@ -57,7 +66,18 @@ func hashHost(host string) string {
 // from the feed's domain) and updates the favicon_url column in the database.
 // Errors are logged but never returned — favicon failures must not block feed
 // polling.
-func Fetch(ctx context.Context, db *sql.DB, feed *model.Feed, faviconsDir string, parsed *gofeed.Feed) {
+//
+// Concurrent calls with the same slug (i.e. feeds at the same host) are
+// serialized via a package-level singleflight.Group: only one goroutine
+// performs the HTTP download and disk write; all concurrent callers share
+// the result. Each caller still updates its own feed row in the database.
+func Fetch(
+	ctx context.Context,
+	db *sql.DB,
+	feed *model.Feed,
+	faviconsDir string,
+	parsed *gofeed.Feed,
+) {
 	candidates := candidates(parsed, feed.URL)
 	if len(candidates) == 0 {
 		return
@@ -73,40 +93,79 @@ func Fetch(ctx context.Context, db *sql.DB, feed *model.Feed, faviconsDir string
 		return
 	}
 
-	// Try each candidate URL until one downloads successfully.
-	var data []byte
-	var contentType, faviconURL string
-	for _, candidate := range candidates {
-		var err error
-		data, contentType, err = download(ctx, candidate)
-		if err == nil {
-			faviconURL = candidate
-			break
+	// doFetch is the shared work: HTTP download + disk write. It returns the
+	// favicon URL that was successfully written, or an error. The
+	// singleflight key is the slug so that concurrent calls for the same
+	// host share a single fetch + write, eliminating the check-then-act race
+	// on the filesystem.
+	type fetchResult struct {
+		faviconURL string
+	}
+	v, err, _ := fetchGroup.Do(slug, func() (any, error) {
+		// Try each candidate URL until one downloads successfully.
+		var data []byte
+		var contentType, faviconURL string
+		for _, candidate := range candidates {
+			var dlErr error
+			data, contentType, dlErr = download(ctx, candidate)
+			if dlErr == nil {
+				faviconURL = candidate
+				break
+			}
+			slog.Debug(
+				"favicon candidate failed",
+				"feed_id", feed.ID,
+				"url", candidate,
+				"error", dlErr,
+			)
 		}
-		slog.Debug("favicon candidate failed", "feed_id", feed.ID, "url", candidate, "error", err)
-	}
-	if faviconURL == "" {
+		if faviconURL == "" {
+			return fetchResult{}, fmt.Errorf("all favicon candidates failed")
+		}
+
+		ext := extensionFromContentType(contentType)
+
+		// Remove any old favicon with a different extension.
+		removeOld(faviconsDir, slug, ext)
+
+		path := filepath.Join(faviconsDir, slug+ext)
+		if writeErr := os.WriteFile(path, data, 0o644); writeErr != nil {
+			slog.Warn(
+				"failed to write favicon",
+				"feed_id", feed.ID,
+				"path", path,
+				"error", writeErr,
+			)
+			return fetchResult{}, writeErr
+		}
+
+		slog.Info(
+			"saved favicon",
+			"feed_id", feed.ID,
+			"slug", slug,
+			"url", faviconURL,
+		)
+		return fetchResult{faviconURL: faviconURL}, nil
+	})
+	if err != nil {
+		// All candidates failed or the write failed; nothing to update.
 		return
 	}
 
-	ext := extensionFromContentType(contentType)
+	result := v.(fetchResult)
 
-	// Remove any old favicon with a different extension.
-	removeOld(faviconsDir, slug, ext)
-
-	path := filepath.Join(faviconsDir, slug+ext)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		slog.Warn("failed to write favicon", "feed_id", feed.ID, "path", path, "error", err)
+	// Each caller updates its own feed row — this is per-feed work that must
+	// happen for every caller, not just the singleflight leader.
+	if _, dbErr := db.Exec(
+		"UPDATE feeds SET favicon_url = ? WHERE id = ?",
+		result.faviconURL,
+		feed.ID,
+	); dbErr != nil {
+		slog.Warn("failed to update favicon_url", "feed_id", feed.ID, "error", dbErr)
 		return
 	}
 
-	if _, err := db.Exec("UPDATE feeds SET favicon_url = ? WHERE id = ?", faviconURL, feed.ID); err != nil {
-		slog.Warn("failed to update favicon_url", "feed_id", feed.ID, "error", err)
-		return
-	}
-
-	feed.FaviconURL = faviconURL
-	slog.Info("saved favicon", "feed_id", feed.ID, "slug", slug, "url", faviconURL)
+	feed.FaviconURL = result.faviconURL
 }
 
 // candidates returns a prioritized list of favicon URLs to try.

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 
+	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/discover"
 )
 
@@ -14,6 +15,16 @@ import (
 type Config struct {
 	// DB is the live SQLite connection. Required.
 	DB *sql.DB
+
+	// Ctx is the server-scoped context cancelled on shutdown. Background
+	// goroutines use this context so they respect graceful shutdown.
+	// Defaults to context.Background() if nil.
+	Ctx context.Context
+
+	// Background tracks server-scoped background goroutines so the caller
+	// can wait for them before closing the database. If nil, background
+	// goroutines are started untracked (fire-and-forget).
+	Background *background.Group
 
 	// FaviconsDir is the on-disk directory where downloaded favicons
 	// are cached. Empty disables favicon download on feed creation.
@@ -36,6 +47,8 @@ type Config struct {
 // Server implements ServerInterface for the rdr v1 JSON API. It is the
 // hand-written counterpart to the generated server.gen.go.
 type Server struct {
+	ctx          context.Context
+	bg           *background.Group
 	db           *sql.DB
 	faviconsDir  string
 	feedResolver func(ctx context.Context, rawURL string) (string, error)
@@ -57,7 +70,19 @@ func New(cfg Config) http.Handler {
 		resolver = discover.ResolveFeedURL
 	}
 
+	ctx := cfg.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	bg := cfg.Background
+	if bg == nil {
+		bg = &background.Group{}
+	}
+
 	srv := &Server{
+		ctx:          ctx,
+		bg:           bg,
 		db:           cfg.DB,
 		faviconsDir:  cfg.FaviconsDir,
 		feedResolver: resolver,
