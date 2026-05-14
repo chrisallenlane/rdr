@@ -1,5 +1,71 @@
 # Changelog
 
+## v1.3.0 - 2026-05-14
+
+### Features
+
+- **Mark-read filter scoping.** Both `POST /items/mark-read` (HTML form)
+  and `POST /api/v1/items/mark-read` (JSON API) now respect the
+  `starred` and `unread` filters. A user viewing `/items?starred=1`
+  who clicks "mark all as read" — or an API client posting
+  `{"starred": true}` — now marks only the matching items, not every
+  unread item in the account. The JSON API's `MarkReadRequest` schema
+  gained optional `starred` and `unread` boolean fields; clients
+  passing `{}`, `{"feed_id": N}`, or `{"list_id": N}` are unaffected.
+  OpenAPI spec `info.version` bumped to `1.3.0` to track the app
+  release.
+
+### Bug fixes
+
+- **Background goroutines outlived shutdown.** OPML imports
+  (`POST /opml`) and JSON API feed adds (`POST /api/v1/feeds`)
+  spawned fire-and-forget goroutines that were not tracked by main's
+  shutdown sequence. On graceful restart they could continue writing
+  to a closed database, producing `sql: database is closed` errors
+  in the logs and losing import work mid-flight. A new
+  `internal/background.Group` helper now registers these goroutines;
+  main waits on them between `httpServer.Shutdown` and `db.Close`,
+  and `Group.Close` prevents stragglers that outlived the shutdown
+  deadline from racing the deferred close.
+- **Favicon fetch raced for multi-feed hosts.** Two concurrent poll
+  workers fetching feeds at the same host (multiple Substack,
+  GitHub, Mastodon, etc.) raced in `favicon.Fetch`, occasionally
+  producing orphan files on disk or `favicon_url` columns pointing
+  at a non-existent extension. Per-slug `singleflight` now
+  serializes the fetch and dedups the upstream HTTP request.
+- **Relative URLs in feed HTML using single quotes or unquoted
+  attributes were silently skipped.** The regex-based resolver only
+  matched `attr="value"`. Feeds emitting `<img src='foo.jpg'>` or
+  `<img src=foo.jpg>` rendered as broken images. Replaced with a
+  proper HTML tokenizer that also handles `srcset` and `poster`
+  and no longer falsely rewrites `data-src=` / `data-href=`.
+- `adjacentItemID` now logs non-`sql.ErrNoRows` errors at WARN
+  instead of silently swallowing them, so a real DB hiccup that
+  hides prev/next links is observable in operator logs.
+
+### Internal
+
+- New `internal/background` package: a thin wrapper around
+  `sync.WaitGroup` with an explicit `Close()` that drops post-Close
+  `Go(fn)` submissions. Enforces the "no Add after Wait returned"
+  contract at the type level rather than relying on shutdown
+  timing.
+- `NewServer` and `NewPoller` signatures gained `ctx` and
+  `bg *background.Group` parameters; `api.Config` gained `Ctx` and
+  `Background`. Internal packages; only `cmd/rdr/main.go` is
+  affected.
+- `internal/sanitize.ResolveRelativeURLs` rewritten from regex to
+  `golang.org/x/net/html` tokenizer. Output attributes are now
+  consistently double-quoted (bluemonday already does this
+  downstream, so user-visible HTML is unchanged).
+- Adds `golang.org/x/sync` as a direct dependency (promoted from
+  indirect for `singleflight.Group`); `oapi-codegen/runtime`
+  similarly promoted by `go mod tidy`.
+- ~2,000 lines of test additions: reproducing tests for every
+  fixed bug (durable regression artifacts) plus coverage-improvement
+  tests pinning html/template's contextual URL escape, the three
+  SQLite timestamp parsers, and bcrypt's long-password handling.
+
 ## v1.2.0 - 2026-04-27
 
 ### Features
