@@ -102,13 +102,13 @@ form requires a minimum of 8 characters for the password.
 ## Database
 
 - Migrations live in `internal/database/migrations/` as numbered SQL files
-  (`001_initial.sql`, `002_*.sql`, ...) and are applied via
+  (`001_initial.sql` through `004_perf_indexes.sql`) and are applied via
   [`pressly/goose`](https://github.com/pressly/goose) on every startup.
 - **Up-only migrations.** Down sections are intentionally empty; rollback
   is performed by restoring from backup, not by goose.
 - Migration `001_initial.sql` uses `IF NOT EXISTS` on every CREATE so it
-  is a no-op against any v1.1.0-or-later install. New tables go in their
-  own file (`002_*.sql`, etc).
+  is a no-op against any v1.1.0-or-later install. New schema changes go in
+  their own file (`005_*.sql`, etc).
 - Adding a new table: create the next-numbered file with
   `-- +goose Up` / `-- +goose Down` markers. Do not modify existing
   migrations.
