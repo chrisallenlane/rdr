@@ -95,6 +95,13 @@ migrations, and this release contains none.
   `synchronous=NORMAL` (safe under WAL mode, removes per-commit
   fsyncs that the default `FULL` incurred), 64 MB page cache,
   in-memory temp store, and 256 MB mmap. No operator action required.
+- Added `idx_feeds_list_id` (covers sidebar unread-count subqueries
+  for lists) and a composite `idx_items_feed_published_at` (covers
+  the main item listing query and prev/next navigation). Both ship
+  as migration `004_perf_indexes.sql`, applied automatically on
+  first startup. The migration is idempotent (`IF NOT EXISTS` on
+  both indexes) — restarting the container after a failed boot
+  safely retries.
 
 ## v1.2.0 - 2026-04-27
 

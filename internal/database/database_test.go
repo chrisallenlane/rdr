@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -459,6 +460,118 @@ func TestMigration003_FTSTriggerScopedToContentColumns(t *testing.T) {
 	if matchedRowID != itemID {
 		t.Errorf("MATCH returned rowid %d, want %d", matchedRowID, itemID)
 	}
+}
+
+// TestMigration004_PerfIndexesExist verifies that migration 004 created
+// both indexes. Definitive existence check via sqlite_master — the index
+// names should appear regardless of whether the query planner happens
+// to pick them on a given query.
+func TestMigration004_PerfIndexesExist(t *testing.T) {
+	db := openTestDB(t)
+
+	for _, idx := range []string{"idx_feeds_list_id", "idx_items_feed_published_at"} {
+		var count int
+		if err := db.QueryRow(
+			"SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name = ?",
+			idx,
+		).Scan(&count); err != nil {
+			t.Fatalf("querying sqlite_master for %q: %v", idx, err)
+		}
+		if count != 1 {
+			t.Errorf("expected index %q to exist, got count=%d", idx, count)
+		}
+	}
+}
+
+// TestMigration004_FeedsListIDIndexUsed verifies that the query planner
+// reliably picks idx_feeds_list_id for a simple WHERE list_id = ? query
+// — even on a fresh DB with no sqlite_stat1 data, because the index is
+// the only relevant one for the equality.
+func TestMigration004_FeedsListIDIndexUsed(t *testing.T) {
+	db := openTestDB(t)
+
+	plan := explainPlan(t, db, `SELECT id FROM feeds WHERE list_id = ?`, 1)
+	if !strings.Contains(plan, "idx_feeds_list_id") {
+		t.Errorf("EXPLAIN QUERY PLAN did not reference idx_feeds_list_id:\n%s", plan)
+	}
+}
+
+// TestMigration004_ItemsFeedPublishedAtIndexUsed verifies the composite
+// index is picked for the main item-listing query shape. A 200-row
+// fixture is required: SQLite's planner uses heuristics in the absence
+// of sqlite_stat1 and may prefer a table scan over a composite index
+// on tiny tables. The fixture pins planner behavior at a row count
+// representative of production scale.
+func TestMigration004_ItemsFeedPublishedAtIndexUsed(t *testing.T) {
+	db := openTestDB(t)
+
+	// Seed a user, feed, and 200 items so the planner sees a non-trivial
+	// items table and is willing to pick the composite index.
+	res, err := db.Exec(`INSERT INTO users (username, password) VALUES (?, ?)`,
+		"plan-user", "hash")
+	if err != nil {
+		t.Fatalf("inserting user: %v", err)
+	}
+	userID, _ := res.LastInsertId()
+
+	res, err = db.Exec(`INSERT INTO feeds (user_id, url) VALUES (?, ?)`,
+		userID, "http://example.com/feed.xml")
+	if err != nil {
+		t.Fatalf("inserting feed: %v", err)
+	}
+	feedID, _ := res.LastInsertId()
+
+	for i := range 200 {
+		if _, err := db.Exec(
+			`INSERT INTO items (feed_id, guid, title, published_at)
+			 VALUES (?, ?, ?, ?)`,
+			feedID,
+			fmt.Sprintf("g-%04d", i),
+			fmt.Sprintf("item-%d", i),
+			"2026-01-01T00:00:00Z",
+		); err != nil {
+			t.Fatalf("inserting item %d: %v", i, err)
+		}
+	}
+
+	plan := explainPlan(t, db,
+		`SELECT i.id FROM items i JOIN feeds f ON i.feed_id = f.id
+		 WHERE f.user_id = ?
+		 ORDER BY i.published_at DESC, i.id DESC
+		 LIMIT 50`,
+		userID,
+	)
+	if !strings.Contains(plan, "idx_items_feed_published_at") {
+		t.Errorf("EXPLAIN QUERY PLAN did not reference idx_items_feed_published_at:\n%s", plan)
+	}
+}
+
+// explainPlan returns the concatenated EXPLAIN QUERY PLAN output for the
+// given query, one row per line. The output format is stable across
+// SQLite 3.x.
+func explainPlan(t *testing.T, db *sql.DB, query string, args ...any) string {
+	t.Helper()
+
+	rows, err := db.Query("EXPLAIN QUERY PLAN "+query, args...)
+	if err != nil {
+		t.Fatalf("EXPLAIN QUERY PLAN: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var sb strings.Builder
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatalf("scanning EXPLAIN row: %v", err)
+		}
+		sb.WriteString(detail)
+		sb.WriteByte('\n')
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterating EXPLAIN rows: %v", err)
+	}
+	return sb.String()
 }
 
 // tableExists checks sqlite_master for a table or virtual table.
