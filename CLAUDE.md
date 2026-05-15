@@ -12,18 +12,28 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full codebase layout.
 ## Build and Test
 
 ```bash
-make build          # Compile to ./bin/rdr
-make test           # Run all tests
-make fuzz           # Run fuzz tests (10s each; override with FUZZ_TIME=30s)
-make fmt            # gofmt -s -w .
-make vet            # go vet ./...
-make lint           # golangci-lint (must be installed separately)
-make generate       # Regenerate api/server.gen.go from openapi.yaml
-make lint-spec      # Spectral lint of the OpenAPI document
+make build              # Compile to ./bin/rdr
+make test               # Run all unit tests (excludes integration tests)
+make integration-test   # Run integration tests (tagged //go:build integration; not in CI)
+make fuzz               # Run fuzz tests (10s each; override with FUZZ_TIME=30s)
+make fmt                # gofmt -s -w .
+make vet                # go vet ./...
+make lint               # golangci-lint (must be installed separately)
+make generate           # Regenerate api/server.gen.go from openapi.yaml
+make lint-spec          # Spectral lint of the OpenAPI document
 ```
 
 ## Key Conventions
 
+- **Integration tests are tagged, not in CI.** Any test that issues a real
+  outbound HTTP request — or exercises an end-to-end flow that does — must
+  carry `//go:build integration` as its first line (blank line, then
+  `package <name>`). Such tests are run on demand via `make integration-test`
+  and are NOT part of `make test` or the CI workflow. Tests that fake HTTP
+  via `httptest.NewServer` are NOT integration tests; they belong in the
+  default suite. Rationale: CI runners have slow/variable external network;
+  real-HTTP tests flake the build with no real signal. The build-tag filters
+  them at compile time (`go test ./...` skips them automatically).
 - **Minimal JavaScript.** All core UI is server-rendered HTML with standard
   forms. Three small client scripts run as progressive enhancement: `app.js`
   for vim-style keyboard shortcuts, `sidebar-init.js` to restore the

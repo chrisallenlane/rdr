@@ -174,8 +174,15 @@ threat model is homelab/trusted-network).
 ## Testing
 
 - Unit tests for pure functions (sanitize, config, helpers, poller logic)
-- Integration tests for HTTP handlers (via `httptest` and an in-memory
-  SQLite database)
+- Handler-level tests that exercise the HTTP stack against `httptest`
+  fakes and an in-memory SQLite database. These are NOT considered
+  integration tests — they are hermetic and run by default.
+- **Integration tests** (separate tier) for any test that issues a real
+  outbound HTTP request or exercises an end-to-end flow that does. Tagged
+  `//go:build integration`, run via `make integration-test`, NOT run by
+  CI. The default `go test ./...` skips these at compile time.
 - Fuzz tests for HTML sanitization, OPML import, feed discovery, favicon
   handling, and time parsing
-- Run `make test` for the full suite, `make fuzz` for fuzz testing
+- Run `make test` for the default suite, `make integration-test` for the
+  integration tier (on demand; requires network), `make fuzz` for fuzz
+  testing
