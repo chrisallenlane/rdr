@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -56,8 +57,34 @@ func FetchAndStoreFeed(ctx context.Context, db *sql.DB, feed *model.Feed, favico
 	// publish a relative <link> still produce an absolute site_url.
 	siteURL := resolveLink(parsed.Link, feed.URL, "")
 
+	// Wrap the metadata UPDATE and item INSERT loop in a single transaction.
+	// Either the whole batch lands or nothing does — a process killed
+	// mid-loop will not leave a feed marked "freshly fetched" with only
+	// partial items. As a side benefit, this reduces N+1 WAL commits to 1.
+	//
+	// Defer ordering is critical: the recordFetchFailure defer at the top
+	// of this function (LIFO-registered FIRST) must run AFTER the rollback
+	// defer (LIFO-registered SECOND). On the error path: the rollback
+	// fires first, releasing the only DB connection (MaxOpenConns(1));
+	// then recordFetchFailure runs via db.Exec on a fresh autocommit.
+	// Moving BeginTx above the recordFetchFailure defer would invert this
+	// order and cause recordFetchFailure to deadlock against the held
+	// transaction for the full busy_timeout window.
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction for %s: %w", feed.URL, err)
+	}
+	defer func() {
+		if retErr != nil {
+			if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+				slog.Warn("rolling back feed fetch transaction",
+					"feed_id", feed.ID, "url", feed.URL, "error", rbErr)
+			}
+		}
+	}()
+
 	// Update feed metadata and clear error state.
-	if _, err := db.Exec(
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE feeds SET title = ?, site_url = ?, last_fetched_at = ?,
 		        last_fetch_error = '', consecutive_failures = 0
 		 WHERE id = ?`,
@@ -84,7 +111,7 @@ func FetchAndStoreFeed(ctx context.Context, db *sql.DB, feed *model.Feed, favico
 
 		itemURL := resolveLink(item.Link, siteURL, feed.URL)
 
-		if _, err := db.Exec(
+		if _, err := tx.ExecContext(ctx,
 			`INSERT OR IGNORE INTO items (feed_id, guid, title, content, description, url, published_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			feed.ID, itemGUID(item), item.Title, content, description, itemURL, itemPublishedAt(item),
@@ -93,7 +120,12 @@ func FetchAndStoreFeed(ctx context.Context, db *sql.DB, feed *model.Feed, favico
 		}
 	}
 
-	// Best-effort favicon download.
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing fetch for %s: %w", feed.URL, err)
+	}
+
+	// Best-effort favicon download — intentionally OUTSIDE the transaction.
+	// Favicon work has its own singleflight and is best-effort.
 	if faviconsDir != "" {
 		favicon.Fetch(ctx, db, feed, faviconsDir, parsed)
 	}

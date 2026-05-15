@@ -68,6 +68,14 @@ migrations, and this release contains none.
   it ran on every row update, including read/star toggles,
   generating unnecessary FTS5 segment churn. Bulk mark-as-read
   operations are measurably cheaper as a result.
+- Feed fetch now stores metadata and items atomically. Previously,
+  a process kill or crash mid-fetch could leave a feed marked as
+  "successfully fetched" while only a partial set of items had
+  been persisted. Now, either everything from a fetch lands or
+  nothing does; a partial state is no longer reachable. As a side
+  benefit, the number of WAL commits per fetch drops from N+1 to
+  1, which compounds with the `synchronous=NORMAL` pragma change
+  for noticeably faster polls on multi-item feeds.
 
 ### Internal
 
