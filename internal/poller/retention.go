@@ -63,4 +63,17 @@ func runRetention(db *sql.DB, retentionDays int) {
 	} else {
 		slog.Info("cleaned expired sessions", "count", n)
 	}
+
+	runMaintenance(db)
+}
+
+// runMaintenance runs cheap SQLite maintenance tasks. Called from
+// runRetention at the end of each poll cycle. PRAGMA optimize runs a
+// partial ANALYZE only on tables whose statistics are stale, completing
+// in milliseconds on a healthy DB. It's designed to be called regularly.
+// Errors are logged at WARN but do not abort the poll cycle.
+func runMaintenance(db *sql.DB) {
+	if _, err := db.Exec("PRAGMA optimize"); err != nil {
+		slog.Warn("maintenance: PRAGMA optimize failed", "error", err)
+	}
 }

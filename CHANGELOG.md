@@ -102,6 +102,12 @@ migrations, and this release contains none.
   first startup. The migration is idempotent (`IF NOT EXISTS` on
   both indexes) — restarting the container after a failed boot
   safely retries.
+- The poll cycle now runs `PRAGMA optimize` at the end of each pass.
+  This is a cheap operation (a no-op in the common case, a small
+  bounded `ANALYZE` when statistics are stale) that keeps the SQLite
+  query planner informed as the `items` table grows. No operator
+  action required; failures (if any) are logged at WARN and do not
+  abort the poll cycle.
 
 ## v1.2.0 - 2026-04-27
 
