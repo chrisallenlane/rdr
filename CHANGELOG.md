@@ -108,6 +108,16 @@ migrations, and this release contains none.
   query planner informed as the `items` table grows. No operator
   action required; failures (if any) are logged at WARN and do not
   abort the poll cycle.
+- rdr now runs SQLite `VACUUM` to reclaim disk pages freed by item
+  retention. The operation runs at most once per 24 hours **per
+  process lifetime** — restarting the rdr container resets the timer,
+  so frequent redeploys will see VACUUM on the first poll cycle after
+  each restart. On a typical homelab deployment the operation
+  completes in well under a second; expect a `maintenance: VACUUM
+  complete` INFO log with a `duration` field. If VACUUM fails (most
+  commonly: disk full), the failure is logged and retried with
+  exponential backoff (immediate → 1h → 6h → 24h) so a persistent
+  failure does not generate per-poll-cycle log noise.
 
 ## v1.2.0 - 2026-04-27
 
