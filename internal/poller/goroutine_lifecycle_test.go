@@ -39,9 +39,12 @@ func TestTriggerSync_BackgroundGoroutineTracked(t *testing.T) {
 	}
 
 	// Use a non-cancelled context so the in-flight HTTP request is not aborted
-	// before we get a chance to observe that Wait() blocks.
+	// before we get a chance to observe that Wait() blocks. faviconsDir is
+	// empty to skip favicon.Fetch, which would otherwise make a real
+	// external HTTP request to example.com (the test feed's <link> value)
+	// and add unrelated timing variance to the lifecycle observation.
 	var bg background.Group
-	p := NewPoller(context.Background(), &bg, db, time.Hour, 0, t.TempDir())
+	p := NewPoller(context.Background(), &bg, db, time.Hour, 0, "")
 
 	if started := p.TriggerSync(context.Background()); !started {
 		t.Fatal("TriggerSync returned false on a fresh poller")

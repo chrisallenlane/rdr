@@ -198,7 +198,13 @@ func TestTriggerSync_ReturnsTrueAfterSyncCompletes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, t.TempDir())
+	// Pass "" for faviconsDir so favicon.Fetch is skipped. The test feed's
+	// <link>http://example.com</link> would otherwise drive a real DNS
+	// lookup + HTTP request to example.com for /favicon.ico, which is the
+	// dominant source of timing variance under load and against the test's
+	// 2-second wait deadlines. This test pins TriggerSync sync-flag
+	// semantics, not favicon behavior.
+	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, "")
 
 	// First TriggerSync should start the goroutine.
 	if !p.TriggerSync(context.Background()) {
