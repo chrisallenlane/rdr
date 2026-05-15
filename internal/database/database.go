@@ -36,6 +36,29 @@ func Open(databasePath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("setting busy_timeout: %w", err)
 	}
 
+	// NORMAL fsyncs the WAL only at checkpoint, not on every commit. Safe
+	// under WAL mode: durable up to the last commit before a crash.
+	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("setting synchronous: %w", err)
+	}
+	// 64 MiB page cache (negative value = KiB; -65536 KiB = 64 MiB).
+	if _, err := db.Exec("PRAGMA cache_size=-65536"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("setting cache_size: %w", err)
+	}
+	// In-memory temp store for sorts/groupings (ORDER BY pagination, etc.).
+	if _, err := db.Exec("PRAGMA temp_store=MEMORY"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("setting temp_store: %w", err)
+	}
+	// 256 MiB mmap hint. SQLite/the VFS may cap or ignore this; setting it
+	// is cheap insurance and never errors on platforms where mmap is unused.
+	if _, err := db.Exec("PRAGMA mmap_size=268435456"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("setting mmap_size: %w", err)
+	}
+
 	// Limit to one connection so all operations share the pragmas above.
 	// SQLite only allows one writer at a time anyway; serializing at the Go
 	// level avoids SQLITE_BUSY when multiple goroutines access the database.

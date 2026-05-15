@@ -98,6 +98,60 @@ func TestOpen_BusyTimeoutSet(t *testing.T) {
 	}
 }
 
+func TestOpen_SynchronousSet(t *testing.T) {
+	db := openTestDB(t)
+
+	var sync int
+	if err := db.QueryRow("PRAGMA synchronous").Scan(&sync); err != nil {
+		t.Fatalf("querying synchronous: %v", err)
+	}
+	// 1 = NORMAL (0=OFF, 1=NORMAL, 2=FULL, 3=EXTRA)
+	if sync != 1 {
+		t.Errorf("expected synchronous=1 (NORMAL), got %d", sync)
+	}
+}
+
+func TestOpen_CacheSizeSet(t *testing.T) {
+	db := openTestDB(t)
+
+	var size int
+	if err := db.QueryRow("PRAGMA cache_size").Scan(&size); err != nil {
+		t.Fatalf("querying cache_size: %v", err)
+	}
+	if size != -65536 {
+		t.Errorf("expected cache_size=-65536, got %d", size)
+	}
+}
+
+func TestOpen_TempStoreSet(t *testing.T) {
+	db := openTestDB(t)
+
+	var ts int
+	if err := db.QueryRow("PRAGMA temp_store").Scan(&ts); err != nil {
+		t.Fatalf("querying temp_store: %v", err)
+	}
+	// 2 = MEMORY (0=DEFAULT, 1=FILE, 2=MEMORY)
+	if ts != 2 {
+		t.Errorf("expected temp_store=2 (MEMORY), got %d", ts)
+	}
+}
+
+func TestOpen_MmapSizeSet(t *testing.T) {
+	db := openTestDB(t)
+
+	var size int64
+	if err := db.QueryRow("PRAGMA mmap_size").Scan(&size); err != nil {
+		t.Fatalf("querying mmap_size: %v", err)
+	}
+	// modernc.org/sqlite's pure-Go VFS may cap or ignore the mmap hint;
+	// the contract this ticket guarantees is "set without error",
+	// so any non-negative value (including 0 if mmap is unsupported
+	// on this build) is acceptable.
+	if size < 0 {
+		t.Errorf("expected mmap_size >= 0, got %d", size)
+	}
+}
+
 func TestOpen_UnwritablePath(t *testing.T) {
 	_, err := Open("/proc/nonexistent/test.db")
 	if err == nil {
