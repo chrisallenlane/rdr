@@ -88,53 +88,33 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func TestOpen_BusyTimeoutSet(t *testing.T) {
+// TestOpen_PragmasSet covers the four pragmas with strict equality
+// contracts (busy_timeout, synchronous, cache_size, temp_store). The
+// mmap_size pragma is tested separately because its contract is
+// "set without error" rather than equality — see TestOpen_MmapSizeSet.
+func TestOpen_PragmasSet(t *testing.T) {
 	db := openTestDB(t)
 
-	var timeout int
-	if err := db.QueryRow("PRAGMA busy_timeout").Scan(&timeout); err != nil {
-		t.Fatalf("querying busy_timeout: %v", err)
+	tests := []struct {
+		pragma string
+		want   int
+	}{
+		{"busy_timeout", 5000},
+		// synchronous: 0=OFF, 1=NORMAL, 2=FULL, 3=EXTRA
+		{"synchronous", 1},
+		{"cache_size", -65536},
+		// temp_store: 0=DEFAULT, 1=FILE, 2=MEMORY
+		{"temp_store", 2},
 	}
-	if timeout != 5000 {
-		t.Errorf("expected busy_timeout=5000, got %d", timeout)
-	}
-}
-
-func TestOpen_SynchronousSet(t *testing.T) {
-	db := openTestDB(t)
-
-	var sync int
-	if err := db.QueryRow("PRAGMA synchronous").Scan(&sync); err != nil {
-		t.Fatalf("querying synchronous: %v", err)
-	}
-	// 1 = NORMAL (0=OFF, 1=NORMAL, 2=FULL, 3=EXTRA)
-	if sync != 1 {
-		t.Errorf("expected synchronous=1 (NORMAL), got %d", sync)
-	}
-}
-
-func TestOpen_CacheSizeSet(t *testing.T) {
-	db := openTestDB(t)
-
-	var size int
-	if err := db.QueryRow("PRAGMA cache_size").Scan(&size); err != nil {
-		t.Fatalf("querying cache_size: %v", err)
-	}
-	if size != -65536 {
-		t.Errorf("expected cache_size=-65536, got %d", size)
-	}
-}
-
-func TestOpen_TempStoreSet(t *testing.T) {
-	db := openTestDB(t)
-
-	var ts int
-	if err := db.QueryRow("PRAGMA temp_store").Scan(&ts); err != nil {
-		t.Fatalf("querying temp_store: %v", err)
-	}
-	// 2 = MEMORY (0=DEFAULT, 1=FILE, 2=MEMORY)
-	if ts != 2 {
-		t.Errorf("expected temp_store=2 (MEMORY), got %d", ts)
+	for _, tc := range tests {
+		var got int
+		if err := db.QueryRow("PRAGMA " + tc.pragma).Scan(&got); err != nil {
+			t.Errorf("querying %s: %v", tc.pragma, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("PRAGMA %s = %d, want %d", tc.pragma, got, tc.want)
+		}
 	}
 }
 
@@ -146,9 +126,9 @@ func TestOpen_MmapSizeSet(t *testing.T) {
 		t.Fatalf("querying mmap_size: %v", err)
 	}
 	// modernc.org/sqlite's pure-Go VFS may cap or ignore the mmap hint;
-	// the contract this ticket guarantees is "set without error",
-	// so any non-negative value (including 0 if mmap is unsupported
-	// on this build) is acceptable.
+	// the contract guaranteed here is "set without error", so any
+	// non-negative value (including 0 if mmap is unsupported on this
+	// build) is acceptable.
 	if size < 0 {
 		t.Errorf("expected mmap_size >= 0, got %d", size)
 	}
@@ -392,25 +372,9 @@ func TestMigration003_FTSTriggerScopedToContentColumns(t *testing.T) {
 
 	// Behavioral check: insert a user → feed → item, then update the item's
 	// title and verify FTS reflects the new title.
+	_, feedID := seedUserFeed(t, db, "trigger-user", "http://example.com/feed.xml")
+
 	res, err := db.Exec(
-		`INSERT INTO users (username, password) VALUES (?, ?)`,
-		"trigger-user", "hash",
-	)
-	if err != nil {
-		t.Fatalf("inserting user: %v", err)
-	}
-	userID, _ := res.LastInsertId()
-
-	res, err = db.Exec(
-		`INSERT INTO feeds (user_id, url) VALUES (?, ?)`,
-		userID, "http://example.com/feed.xml",
-	)
-	if err != nil {
-		t.Fatalf("inserting feed: %v", err)
-	}
-	feedID, _ := res.LastInsertId()
-
-	res, err = db.Exec(
 		`INSERT INTO items (feed_id, guid, title, content, description)
 		 VALUES (?, ?, ?, ?, ?)`,
 		feedID, "g1", "alphatitle", "old-content", "old-description",
@@ -507,19 +471,7 @@ func TestMigration004_ItemsFeedPublishedAtIndexUsed(t *testing.T) {
 
 	// Seed a user, feed, and 200 items so the planner sees a non-trivial
 	// items table and is willing to pick the composite index.
-	res, err := db.Exec(`INSERT INTO users (username, password) VALUES (?, ?)`,
-		"plan-user", "hash")
-	if err != nil {
-		t.Fatalf("inserting user: %v", err)
-	}
-	userID, _ := res.LastInsertId()
-
-	res, err = db.Exec(`INSERT INTO feeds (user_id, url) VALUES (?, ?)`,
-		userID, "http://example.com/feed.xml")
-	if err != nil {
-		t.Fatalf("inserting feed: %v", err)
-	}
-	feedID, _ := res.LastInsertId()
+	userID, feedID := seedUserFeed(t, db, "plan-user", "http://example.com/feed.xml")
 
 	for i := range 200 {
 		if _, err := db.Exec(
@@ -572,6 +524,32 @@ func explainPlan(t *testing.T, db *sql.DB, query string, args ...any) string {
 		t.Fatalf("iterating EXPLAIN rows: %v", err)
 	}
 	return sb.String()
+}
+
+// seedUserFeed inserts one user and one feed in test setup and returns
+// their generated IDs. internal/database cannot depend on internal/testutil
+// (cycle), so this is a local helper for the migration tests in this file.
+func seedUserFeed(t *testing.T, db *sql.DB, username, feedURL string) (userID, feedID int64) {
+	t.Helper()
+
+	res, err := db.Exec(
+		`INSERT INTO users (username, password) VALUES (?, ?)`,
+		username, "hash",
+	)
+	if err != nil {
+		t.Fatalf("inserting user: %v", err)
+	}
+	userID, _ = res.LastInsertId()
+
+	res, err = db.Exec(
+		`INSERT INTO feeds (user_id, url) VALUES (?, ?)`,
+		userID, feedURL,
+	)
+	if err != nil {
+		t.Fatalf("inserting feed: %v", err)
+	}
+	feedID, _ = res.LastInsertId()
+	return userID, feedID
 }
 
 // tableExists checks sqlite_master for a table or virtual table.
