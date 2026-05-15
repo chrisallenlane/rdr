@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -233,5 +234,138 @@ func TestTriggerSync_ReturnsTrueAfterSyncCompletes(t *testing.T) {
 	// After the sync completes, TriggerSync must succeed again.
 	if !p.TriggerSync(context.Background()) {
 		t.Error("TriggerSync returned false after sync completed, want true")
+	}
+}
+
+// TestMaybeVacuum_RunsOnFirstCycle verifies that the zero-value lastVacuum
+// satisfies the 24h gate, so VACUUM runs on the first call.
+func TestMaybeVacuum_RunsOnFirstCycle(t *testing.T) {
+	getLogs := captureSlog(t)
+	db := testutil.OpenTestDB(t)
+
+	p := &Poller{db: db}
+	p.maybeVacuum(context.Background())
+
+	if !strings.Contains(getLogs(), "maintenance: VACUUM complete") {
+		t.Errorf("expected VACUUM to run on first cycle; logs:\n%s", getLogs())
+	}
+	if p.lastVacuum.IsZero() {
+		t.Error("lastVacuum should be set after successful VACUUM")
+	}
+	if p.consecutiveVacuumFailures != 0 {
+		t.Errorf("consecutiveVacuumFailures = %d, want 0", p.consecutiveVacuumFailures)
+	}
+}
+
+// TestMaybeVacuum_SkipsWithinInterval verifies that a fresh lastVacuum
+// gates the second call, so VACUUM does NOT run twice within 24h.
+func TestMaybeVacuum_SkipsWithinInterval(t *testing.T) {
+	getLogs := captureSlog(t)
+	db := testutil.OpenTestDB(t)
+
+	p := &Poller{db: db, lastVacuum: time.Now()}
+	p.maybeVacuum(context.Background())
+
+	if strings.Contains(getLogs(), "maintenance: VACUUM complete") {
+		t.Errorf("VACUUM unexpectedly ran when within 24h interval; logs:\n%s", getLogs())
+	}
+}
+
+// TestMaybeVacuum_DurationFieldPresent verifies the success log includes
+// a non-zero duration field.
+func TestMaybeVacuum_DurationFieldPresent(t *testing.T) {
+	getLogs := captureSlog(t)
+	db := testutil.OpenTestDB(t)
+
+	p := &Poller{db: db}
+	p.maybeVacuum(context.Background())
+
+	logs := getLogs()
+	// The slog JSON handler renders time.Duration as a numeric nanosecond
+	// count: "duration": 123456. Search for the field name and a non-zero
+	// digit immediately after (with optional whitespace).
+	if !strings.Contains(logs, `"duration"`) {
+		t.Errorf("VACUUM success log missing duration field; logs:\n%s", logs)
+	}
+	// Crude but adequate: assert duration is not the literal 0.
+	if strings.Contains(logs, `"duration":0`) {
+		t.Errorf("VACUUM duration was 0; logs:\n%s", logs)
+	}
+}
+
+// TestMaybeVacuum_FailureBackoffEscalates simulates repeated VACUUM
+// failures by passing a closed DB and asserts:
+//   - consecutiveVacuumFailures increments on each call
+//   - lastVacuum is updated on each attempt (so the backoff window applies)
+//   - log level escalates from WARN to ERROR once failures >= 3
+func TestMaybeVacuum_FailureBackoffEscalates(t *testing.T) {
+	getLogs := captureSlog(t)
+	db := testutil.OpenTestDB(t)
+	if err := db.Close(); err != nil {
+		t.Fatalf("closing DB: %v", err)
+	}
+
+	p := &Poller{db: db}
+
+	// Failure 1: WARN, counter = 1.
+	p.maybeVacuum(context.Background())
+	if p.consecutiveVacuumFailures != 1 {
+		t.Errorf("after 1st failure: counter = %d, want 1", p.consecutiveVacuumFailures)
+	}
+	if p.lastVacuum.IsZero() {
+		t.Error("lastVacuum should be updated even on failure (to gate backoff)")
+	}
+
+	// Failure 2: still WARN, counter = 2. Need to force the interval gate
+	// to pass — case 2 returns 1h, so we set lastVacuum back to >= 1h ago.
+	p.lastVacuum = time.Now().Add(-2 * time.Hour)
+	p.maybeVacuum(context.Background())
+	if p.consecutiveVacuumFailures != 2 {
+		t.Errorf("after 2nd failure: counter = %d, want 2", p.consecutiveVacuumFailures)
+	}
+
+	// Failure 3: ERROR, counter = 3. case 3 returns 6h.
+	p.lastVacuum = time.Now().Add(-7 * time.Hour)
+	p.maybeVacuum(context.Background())
+	if p.consecutiveVacuumFailures != 3 {
+		t.Errorf("after 3rd failure: counter = %d, want 3", p.consecutiveVacuumFailures)
+	}
+
+	logs := getLogs()
+	warnCount := strings.Count(logs, `"level":"WARN","msg":"maintenance: VACUUM failed"`)
+	errorCount := strings.Count(logs, `"level":"ERROR","msg":"maintenance: VACUUM failed"`)
+	if warnCount != 2 {
+		t.Errorf("expected 2 WARN failure logs (failures 1 and 2), got %d; logs:\n%s",
+			warnCount, logs)
+	}
+	if errorCount != 1 {
+		t.Errorf("expected 1 ERROR failure log (failure 3), got %d; logs:\n%s",
+			errorCount, logs)
+	}
+}
+
+// TestVacuumFailureBackoff_Schedule pins the exact retry intervals so a
+// future maintainer cannot quietly change the cadence and have all the
+// other tests still pass.
+func TestVacuumFailureBackoff_Schedule(t *testing.T) {
+	p := &Poller{}
+
+	tests := []struct {
+		failures int
+		want     time.Duration
+	}{
+		{1, 0},
+		{2, 1 * time.Hour},
+		{3, 6 * time.Hour},
+		{4, 24 * time.Hour},
+		{10, 24 * time.Hour}, // default arm caps at 24h
+	}
+	for _, tc := range tests {
+		p.consecutiveVacuumFailures = tc.failures
+		got := p.vacuumFailureBackoff()
+		if got != tc.want {
+			t.Errorf("vacuumFailureBackoff() with failures=%d = %v, want %v",
+				tc.failures, got, tc.want)
+		}
 	}
 }
