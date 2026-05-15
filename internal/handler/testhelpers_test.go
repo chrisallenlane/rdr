@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"testing"
 	"testing/fstest"
@@ -61,6 +62,13 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatalf("newTestServer: %v", err)
 	}
 	s.feedResolver = func(_ context.Context, u string) (string, error) { return u, nil }
+	// Stub feedFetcher to a no-op so handler tests don't issue real
+	// outbound HTTP. Tests that need the fetch path should either spin up
+	// an httptest.NewServer and pass the URL through (still hermetic), or
+	// be tagged //go:build integration. See CLAUDE.md.
+	s.feedFetcher = func(_ context.Context, _ *sql.DB, _ *model.Feed, _ string) error {
+		return nil
+	}
 	return s
 }
 

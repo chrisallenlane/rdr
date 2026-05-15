@@ -10,6 +10,7 @@ import (
 
 	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/model"
+	"github.com/chrisallenlane/rdr/internal/poller"
 )
 
 // validRSSResponse returns the bytes of a minimal valid RSS feed. The body is
@@ -54,18 +55,20 @@ func TestOPMLImport_BackgroundGoroutineTracked(t *testing.T) {
 	// that bg.Wait() blocks.
 	var bg background.Group
 	s := newTestServerWithBG(t, context.Background(), &bg)
-	// Skip favicon.Fetch in this test. The validRSSResponse fixture has
-	// <link>http://example.com</link>, which causes favicon.Fetch to issue
-	// a real HTTP request to example.com for /favicon.ico. On loaded CI
-	// runners that external call exceeds the 15s bg.Wait deadline; the
-	// test pins background-goroutine lifecycle semantics, not favicon
-	// behavior.
+	// Undo the test-helper feedFetcher stub: this test pins the lifecycle
+	// of an actual fetch goroutine, so it needs the real production
+	// FetchAndStoreFeed pointed at the local httptest server.
+	s.feedFetcher = poller.FetchAndStoreFeed
+	// faviconsDir="" so favicon.Fetch is skipped — validRSSResponse has
+	// <link>http://example.com</link> which would otherwise drive a real
+	// HTTP request to example.com/favicon.ico. The test pins
+	// goroutine-lifecycle semantics, not favicon behavior.
 	s.faviconsDir = ""
 	userID := createTestUser(t, s, "testuser", "testpass1")
 
 	// Seed two feeds so fetchImportedFeeds iterates more than once.
 	var feeds []*model.Feed
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		feedURL := fmt.Sprintf("%s/feed/%d", ts.URL, i)
 		res, err := s.db.Exec(
 			"INSERT INTO feeds (user_id, url) VALUES (?, ?)",
