@@ -65,6 +65,24 @@
   fixed bug (durable regression artifacts) plus coverage-improvement
   tests pinning html/template's contextual URL escape, the three
   SQLite timestamp parsers, and bcrypt's long-password handling.
+- **Integration test tier.** Tests that perform real outbound HTTP
+  must now carry `//go:build integration` as their first line and
+  are run via `make integration-test`. The default `go test ./...`
+  (and CI) skips them at compile time. `httptest.NewServer`-backed
+  tests stay in the default suite — they are hermetic. See
+  CLAUDE.md "Key Conventions" for the rule. Driving motivation:
+  several handler/api/poller tests previously issued real requests
+  to `example.com` (via `handleAddFeed`'s synchronous
+  `FetchAndStoreFeed` or via favicon discovery), flaking CI on the
+  slow runner.
+- **Test fetcher injection.** `*handler.Server` and `api.Config`
+  gained an injectable `feedFetcher` / `FeedFetcher` field
+  (mirroring the existing `feedResolver` pattern). Production
+  defaults to `poller.FetchAndStoreFeed`; tests stub it to a
+  no-op. Eliminates the entire class of real-HTTP leakage via
+  AddFeed and OPML import. Verified with
+  `https_proxy=http://127.0.0.1:1 go test ./...` — all tests pass
+  with outbound HTTP blocked.
 
 ## v1.2.0 - 2026-04-27
 
