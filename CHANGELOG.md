@@ -2,6 +2,27 @@
 
 ## v1.3.0 - 2026-05-14
 
+### Upgrade notes
+
+First start after pulling v1.3.0 applies two automatic migrations
+(`003_fts_trigger_columns.sql` and `004_perf_indexes.sql`).
+`goose_db_version` advances from 2 to 4 in a single boot. Expect a
+one-time `maintenance: VACUUM complete` INFO log on the first poll
+cycle after the upgrade as the new daily VACUUM resets the in-process
+timer. Subsequent VACUUMs run at most once per 24 hours per process
+lifetime (see "Internal"). No operator action required.
+
+**Downgrade:** v1.2.x binaries will refuse to start against a
+v1.3.0-migrated database (goose detects the newer schema version).
+Downgrade requires restoring a pre-upgrade backup.
+
+**Migration retry:** If either migration fails (rare; the most likely
+cause is disk-full or unwritable DB directory), rdr exits with an
+error. Goose only advances the version on success, so restarting the
+container after fixing the underlying issue resumes from the failed
+migration. Backup restore is only required for column-change
+migrations, and this release contains none.
+
 ### Features
 
 - **Mark-read filter scoping.** Both `POST /items/mark-read` (HTML form)
@@ -42,6 +63,11 @@
 - `adjacentItemID` now logs non-`sql.ErrNoRows` errors at WARN
   instead of silently swallowing them, so a real DB hiccup that
   hides prev/next links is observable in operator logs.
+- The FTS5 sync trigger on the `items` table now only fires when
+  indexed columns (title, content, description) change. Previously
+  it ran on every row update, including read/star toggles,
+  generating unnecessary FTS5 segment churn. Bulk mark-as-read
+  operations are measurably cheaper as a result.
 
 ### Internal
 
@@ -65,6 +91,10 @@
   fixed bug (durable regression artifacts) plus coverage-improvement
   tests pinning html/template's contextual URL escape, the three
   SQLite timestamp parsers, and bcrypt's long-password handling.
+- Tuned SQLite connection pragmas for the rdr workload:
+  `synchronous=NORMAL` (safe under WAL mode, removes per-commit
+  fsyncs that the default `FULL` incurred), 64 MB page cache,
+  in-memory temp store, and 256 MB mmap. No operator action required.
 
 ## v1.2.0 - 2026-04-27
 
