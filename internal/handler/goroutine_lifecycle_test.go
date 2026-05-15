@@ -54,6 +54,13 @@ func TestOPMLImport_BackgroundGoroutineTracked(t *testing.T) {
 	// that bg.Wait() blocks.
 	var bg background.Group
 	s := newTestServerWithBG(t, context.Background(), &bg)
+	// Skip favicon.Fetch in this test. The validRSSResponse fixture has
+	// <link>http://example.com</link>, which causes favicon.Fetch to issue
+	// a real HTTP request to example.com for /favicon.ico. On loaded CI
+	// runners that external call exceeds the 15s bg.Wait deadline; the
+	// test pins background-goroutine lifecycle semantics, not favicon
+	// behavior.
+	s.faviconsDir = ""
 	userID := createTestUser(t, s, "testuser", "testpass1")
 
 	// Seed two feeds so fetchImportedFeeds iterates more than once.
