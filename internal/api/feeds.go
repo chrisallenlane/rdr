@@ -12,7 +12,6 @@ import (
 	"github.com/chrisallenlane/rdr/internal/dbutil"
 	"github.com/chrisallenlane/rdr/internal/discover"
 	"github.com/chrisallenlane/rdr/internal/model"
-	"github.com/chrisallenlane/rdr/internal/poller"
 )
 
 // listFeedsQuery selects every column needed to build a Feed response,
@@ -138,7 +137,7 @@ func (s *Server) AddFeed(w http.ResponseWriter, r *http.Request) {
 		feed := &model.Feed{ID: feedID, UserID: uid, URL: feedURL}
 		ctx, db, faviconsDir := s.ctx, s.db, s.faviconsDir
 		s.bg.Go(func() {
-			if err := poller.FetchAndStoreFeed(ctx, db, feed, faviconsDir); err != nil {
+			if err := s.feedFetcher(ctx, db, feed, faviconsDir); err != nil {
 				slog.Warn("api: initial feed fetch failed",
 					"feed_id", feedID, "url", feedURL, "error", err)
 			}

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/chrisallenlane/rdr/internal/discover"
+	"github.com/chrisallenlane/rdr/internal/model"
 	"github.com/chrisallenlane/rdr/internal/testutil"
 	"github.com/chrisallenlane/rdr/internal/token"
 )
@@ -72,6 +73,13 @@ func stubResolver(target string, err error) func(context.Context, string) (strin
 		}
 		return target, nil
 	}
+}
+
+// noopFetcher is a FeedFetcher that returns nil without doing any work.
+// Used in api tests so the AddFeed background goroutine doesn't issue a
+// real outbound HTTP request through poller.FetchAndStoreFeed.
+func noopFetcher(_ context.Context, _ *sql.DB, _ *model.Feed, _ string) error {
+	return nil
 }
 
 func TestListFeeds_ScopedByUser(t *testing.T) {
@@ -138,6 +146,7 @@ func TestAddFeed_Success(t *testing.T) {
 	h := New(Config{
 		DB:           db,
 		FeedResolver: stubResolver("https://new.example/feed.xml", nil),
+		FeedFetcher:  noopFetcher,
 	})
 
 	body := `{"url": "https://new.example"}`
@@ -174,6 +183,7 @@ func TestAddFeed_DuplicateReturns409(t *testing.T) {
 		// Resolver returns the URL alice already has subscribed.
 		DB:           db,
 		FeedResolver: stubResolver("https://alice.example/feed", nil),
+		FeedFetcher:  noopFetcher,
 	})
 
 	body := `{"url": "https://alice.example/feed"}`
