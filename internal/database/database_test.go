@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -361,6 +362,102 @@ func TestOpen_UpgradesFromV1_1_0(t *testing.T) {
 	}
 	if rows, _ := res.RowsAffected(); rows != 1 {
 		t.Errorf("expected 1 row inserted, got %d", rows)
+	}
+}
+
+// TestMigration003_FTSTriggerScopedToContentColumns verifies that migration
+// 003_fts_trigger_columns.sql has applied — the items_au trigger should be
+// scoped to fire only on title/content/description updates. The negative
+// case ("trigger does NOT fire on read=1 update") is intentionally not
+// tested here; see the ticket's AC for rationale (cheapest probes pass
+// on both old and new triggers because the old trigger re-inserts the
+// same content). The positive case below proves the trigger still fires
+// when indexed columns change, which is the contract the migration must
+// preserve.
+func TestMigration003_FTSTriggerScopedToContentColumns(t *testing.T) {
+	db := openTestDB(t)
+
+	// Schema-shape check: the trigger DDL in sqlite_master must contain the
+	// column-scope clause.
+	var triggerSQL string
+	if err := db.QueryRow(
+		"SELECT sql FROM sqlite_master WHERE type='trigger' AND name='items_au'",
+	).Scan(&triggerSQL); err != nil {
+		t.Fatalf("querying items_au trigger SQL: %v", err)
+	}
+	if !strings.Contains(triggerSQL, "OF title, content, description") {
+		t.Errorf("items_au trigger SQL missing column-scope clause: %s", triggerSQL)
+	}
+
+	// Behavioral check: insert a user → feed → item, then update the item's
+	// title and verify FTS reflects the new title.
+	res, err := db.Exec(
+		`INSERT INTO users (username, password) VALUES (?, ?)`,
+		"trigger-user", "hash",
+	)
+	if err != nil {
+		t.Fatalf("inserting user: %v", err)
+	}
+	userID, _ := res.LastInsertId()
+
+	res, err = db.Exec(
+		`INSERT INTO feeds (user_id, url) VALUES (?, ?)`,
+		userID, "http://example.com/feed.xml",
+	)
+	if err != nil {
+		t.Fatalf("inserting feed: %v", err)
+	}
+	feedID, _ := res.LastInsertId()
+
+	res, err = db.Exec(
+		`INSERT INTO items (feed_id, guid, title, content, description)
+		 VALUES (?, ?, ?, ?, ?)`,
+		feedID, "g1", "alphatitle", "old-content", "old-description",
+	)
+	if err != nil {
+		t.Fatalf("inserting item: %v", err)
+	}
+	itemID, _ := res.LastInsertId()
+
+	// Confirm the initial FTS row was created by items_ai (sanity check).
+	var initialFTSTitle string
+	if err := db.QueryRow(
+		"SELECT title FROM items_fts WHERE rowid = ?", itemID,
+	).Scan(&initialFTSTitle); err != nil {
+		t.Fatalf("querying items_fts for initial row: %v", err)
+	}
+	if initialFTSTitle != "alphatitle" {
+		t.Fatalf("initial FTS title = %q, want %q", initialFTSTitle, "alphatitle")
+	}
+
+	// Trigger the column-scoped UPDATE.
+	if _, err := db.Exec(
+		"UPDATE items SET title = ? WHERE id = ?", "betatitle", itemID,
+	); err != nil {
+		t.Fatalf("updating item title: %v", err)
+	}
+
+	// items_fts should reflect the new title (proves items_au fires for
+	// indexed-column changes).
+	var got string
+	if err := db.QueryRow(
+		"SELECT title FROM items_fts WHERE rowid = ?", itemID,
+	).Scan(&got); err != nil {
+		t.Fatalf("querying items_fts for updated row: %v", err)
+	}
+	if got != "betatitle" {
+		t.Errorf("FTS title after column-scoped UPDATE = %q, want %q", got, "betatitle")
+	}
+
+	// End-to-end FTS sync proof: MATCH on the new title returns the row.
+	var matchedRowID int64
+	if err := db.QueryRow(
+		`SELECT rowid FROM items_fts WHERE items_fts MATCH ?`, "betatitle",
+	).Scan(&matchedRowID); err != nil {
+		t.Fatalf("MATCH on new title: %v", err)
+	}
+	if matchedRowID != itemID {
+		t.Errorf("MATCH returned rowid %d, want %d", matchedRowID, itemID)
 	}
 }
 
