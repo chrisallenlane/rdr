@@ -42,6 +42,19 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      - name: openapi info.version matches tag
+        # See comment in .gitea/workflows/build.yaml.
+        if: github.ref_type == 'tag'
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          actual=$(awk '/^  version:/ {print $2; exit}' internal/api/openapi.yaml)
+          if [ "$expected" != "$actual" ]; then
+            echo "openapi.yaml info.version=$actual but tag is ${GITHUB_REF_NAME} (expected $expected)"
+            echo "Bump info.version in internal/api/openapi.yaml before tagging."
+            exit 1
+          fi
+          echo "openapi.yaml info.version=$actual matches tag ${GITHUB_REF_NAME}"
+
       - name: golangci-lint
         run: golangci-lint run ./...
 

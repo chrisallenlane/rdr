@@ -45,6 +45,23 @@ jobs:
       - name: openapi spec lint (spectral)
         run: npx -y @stoplight/spectral-cli lint internal/api/openapi.yaml
 
+      - name: openapi info.version matches tag
+        # Only runs on tag pushes (vX.Y.Z). Asserts that
+        # internal/api/openapi.yaml's info.version equals the tag (minus
+        # the leading `v`). Catches the historical lag where v1.2.0
+        # shipped with info.version still at 1.0.0 — pre-tag gate
+        # eliminates that as a process-failure mode.
+        if: github.ref_type == 'tag'
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          actual=$(awk '/^  version:/ {print $2; exit}' internal/api/openapi.yaml)
+          if [ "$expected" != "$actual" ]; then
+            echo "openapi.yaml info.version=$actual but tag is ${GITHUB_REF_NAME} (expected $expected)"
+            echo "Bump info.version in internal/api/openapi.yaml before tagging."
+            exit 1
+          fi
+          echo "openapi.yaml info.version=$actual matches tag ${GITHUB_REF_NAME}"
+
       - name: generated code is up to date
         # Re-runs `go generate ./...` and fails if any tracked file changed.
         # Catches PRs that edit api/openapi.yaml without regenerating
