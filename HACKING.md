@@ -8,7 +8,8 @@ cd rdr
 
 make build            # Compile binary to ./bin/rdr
 make run              # Build and run
-make test             # Run tests
+make test             # Run unit + handler tests (excludes integration tests)
+make integration-test # Run integration tests (real network; tagged //go:build integration; not in CI)
 make fuzz             # Run fuzz tests (10s each; FUZZ_TIME=30s for longer)
 make fmt              # Format code (gofmt + Prettier)
 make vet              # Run go vet

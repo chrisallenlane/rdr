@@ -68,7 +68,7 @@ Page size is **50** and the page number is supplied via `?page=N`.
 | `GET`       | `/api/v1/items/{id}`                       | Get item with full content             |
 | `PUT`       | `/api/v1/items/{id}/star`                  | Star an item (idempotent)              |
 | `DELETE`    | `/api/v1/items/{id}/star`                  | Unstar an item (idempotent)            |
-| `POST`      | `/api/v1/items/mark-read`                  | Mark items read (all, by feed, by list)|
+| `POST`      | `/api/v1/items/mark-read`                  | Mark items read (all, by feed, by list, by starred/unread filter) |
 | `GET`       | `/api/v1/feeds`                            | List feeds                             |
 | `POST`      | `/api/v1/feeds`                            | Add feed by URL (auto-discovers)       |
 | `GET`       | `/api/v1/feeds/{id}`                       | Get feed                               |
@@ -143,7 +143,11 @@ curl -X POST \
 { "marked": 17 }
 ```
 
-Pass `{"feed_id": N}` or `{"list_id": N}` to scope the mark-read.
+Pass `{"feed_id": N}` or `{"list_id": N}` to scope the mark-read to a
+single feed or list. Pass `{"starred": true}` to mark only starred items,
+or `{"unread": true}` to mark only unread items (effectively a no-op for
+already-read items). Any combination of filters AND together — e.g.
+`{"feed_id": N, "starred": true}` marks only starred items in feed N.
 
 ### Add a feed
 

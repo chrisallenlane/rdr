@@ -47,7 +47,10 @@ make lint-spec          # Spectral lint of the OpenAPI document
   `embed.FS` variables.
 - **`NewServer` accepts `fs.FS`** (not `embed.FS`) so tests can provide
   synthetic filesystems via `testing/fstest.MapFS`. Its full signature is
-  `NewServer(db *sql.DB, staticFiles fs.FS, templateFiles fs.FS, faviconsDir string) (*Server, error)`.
+  `NewServer(ctx context.Context, bg *background.Group, db *sql.DB, staticFiles fs.FS, templateFiles fs.FS, faviconsDir string) (*Server, error)`.
+  `ctx` is the server-scoped context cancelled on shutdown; `bg` tracks
+  background goroutines so `cmd/rdr/main.go` can wait for them before
+  closing the database.
 - **Handler tests** use `newTestServer(t)` from `testhelpers_test.go`,
   which creates a `*Server` with an in-memory SQLite DB and stub templates.
 - **Pure Go SQLite** via `modernc.org/sqlite`. No cgo required. Timestamps
@@ -101,7 +104,11 @@ make lint-spec          # Spectral lint of the OpenAPI document
 - Tests use `testutil.OpenTestDB(t)` plus `token.Generate` to mint a
   test bearer; `authedRequest(method, target, tok, body)` is the
   shorthand. To exercise SyncFeeds/SyncStatus or AddFeed, pass them
-  through `api.Config{}` rather than reaching into the package.
+  through `api.Config{}` rather than reaching into the package. The
+  config also accepts `Ctx`, `Background`, and `FeedFetcher` — leave
+  them nil to use safe defaults (`context.Background()`, fresh
+  `background.Group`, `poller.FetchAndStoreFeed`), or stub
+  `FeedFetcher` to a no-op in tests that don't want real outbound HTTP.
 
 ## Manual Testing
 
