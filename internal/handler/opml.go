@@ -13,7 +13,6 @@ import (
 
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
-	"github.com/chrisallenlane/rdr/internal/poller"
 )
 
 // opmlDoc is the root element of an OPML 2.0 document.
@@ -331,7 +330,7 @@ func (s *Server) handleImportOPML(w http.ResponseWriter, r *http.Request) {
 // background. Errors are logged but do not block other feeds.
 func (s *Server) fetchImportedFeeds(ctx context.Context, feeds []*model.Feed) {
 	for _, f := range feeds {
-		if err := poller.FetchAndStoreFeed(ctx, s.db, f, s.faviconsDir); err != nil {
+		if err := s.feedFetcher(ctx, s.db, f, s.faviconsDir); err != nil {
 			slog.Warn("fetching imported feed", "url", f.URL, "error", err)
 		}
 	}

@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/chrisallenlane/rdr/internal/discover"
+	"github.com/chrisallenlane/rdr/internal/model"
 )
 
 // postFeedForm creates an authenticated POST /feeds request with the given
@@ -269,6 +272,13 @@ func TestHandleAddFeed_InitialFetchFailure(t *testing.T) {
 	s := newTestServer(t)
 	userID := createTestUser(t, s, "testuser", "testpass1")
 
+	// Override the test-helper stub so the fetch deterministically fails.
+	// The contract under test is "feed row is still created when initial
+	// fetch fails"; the failure mode is what the test name promises.
+	s.feedFetcher = func(_ context.Context, _ *sql.DB, _ *model.Feed, _ string) error {
+		return errors.New("simulated fetch failure")
+	}
+
 	feedURL := "https://example.com/feed.xml"
 	rec := httptest.NewRecorder()
 	s.ServeHTTP(
@@ -276,8 +286,8 @@ func TestHandleAddFeed_InitialFetchFailure(t *testing.T) {
 		postFeedForm(t, s, userID, url.Values{"url": {feedURL}}),
 	)
 
-	// The initial fetch always fails in tests (no real HTTP server). The
-	// handler should still create the feed row and set a flash cookie.
+	// Handler should still create the feed row and set a flash cookie
+	// even though the initial fetch returned an error.
 	var flashValue string
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == "rdr_flash" {

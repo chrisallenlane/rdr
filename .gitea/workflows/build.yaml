@@ -66,7 +66,12 @@ jobs:
         run: npx eslint --ignore-pattern 'static/js/htmx.min.js' static/js/
 
       - name: go test
-        run: go test -count=1 ./...
+        # -timeout=20m: Go's default global test timeout is 10m. On the
+        # homelab CI runner the handler package alone takes ~10m (each
+        # test runs migrations from scratch via testutil.OpenTestDB),
+        # routinely brushing the default. 20m is generous headroom
+        # without masking a real perf regression.
+        run: go test -count=1 -timeout=20m ./...
 
       - name: go build
         # -buildvcs=false matches the GitHub workflow (where uid mismatch

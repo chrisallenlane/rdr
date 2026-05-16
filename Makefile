@@ -3,7 +3,7 @@ BUILD_DIR := ./bin
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS   := -s -w -X main.version=$(VERSION)
 
-.PHONY: build run test fuzz lint lint-spec fmt vet generate a11y clean docker docker-multiarch release help
+.PHONY: build run test integration-test fuzz lint lint-spec fmt vet generate a11y clean docker docker-multiarch release help
 
 ## Show available commands
 help:
@@ -17,9 +17,13 @@ build:
 run: build
 	RDR_DATA_PATH=/tmp/rdr-test $(BUILD_DIR)/$(BINARY)
 
-## Run all tests
+## Run all tests (excludes integration tests; see integration-test)
 test:
 	go test ./... -v -count=1
+
+## Run integration tests (real network; tagged //go:build integration; not run by CI)
+integration-test:
+	go test -tags=integration ./... -v -count=1
 
 ## Run fuzz tests (10s each by default; override with FUZZ_TIME=30s)
 FUZZ_TIME ?= 10s

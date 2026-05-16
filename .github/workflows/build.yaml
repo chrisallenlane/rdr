@@ -52,7 +52,8 @@ jobs:
         run: npx eslint --ignore-pattern 'static/js/htmx.min.js' static/js/
 
       - name: go test
-        run: go test -count=1 ./...
+        # -timeout=20m: see comment in .gitea/workflows/build.yaml.
+        run: go test -count=1 -timeout=20m ./...
 
       - name: go build
         # -buildvcs=false: git refuses to read the workspace because of a uid

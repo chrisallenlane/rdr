@@ -41,7 +41,12 @@ func TestTriggerSync_BackgroundGoroutineTracked(t *testing.T) {
 	// Use a non-cancelled context so the in-flight HTTP request is not aborted
 	// before we get a chance to observe that Wait() blocks.
 	var bg background.Group
-	p := NewPoller(context.Background(), &bg, db, time.Hour, 0, t.TempDir())
+	// faviconsDir="" so favicon.Fetch is skipped — the test feed's
+	// <link>http://example.com</link> would otherwise drive a real HTTP
+	// request to example.com/favicon.ico and add unrelated network
+	// latency. This test pins goroutine-lifecycle semantics, not favicon
+	// behavior. See CLAUDE.md "Integration tests" convention.
+	p := NewPoller(context.Background(), &bg, db, time.Hour, 0, "")
 
 	if started := p.TriggerSync(context.Background()); !started {
 		t.Fatal("TriggerSync returned false on a fresh poller")

@@ -72,7 +72,7 @@ func TestPollConcurrency(t *testing.T) {
 		}
 	}
 
-	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, t.TempDir())
+	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, "")
 	p.poll(context.Background())
 
 	// Concurrency is verified structurally by the peak-in-flight counter
@@ -129,7 +129,7 @@ func TestPollShutdownStopsDispatching(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, t.TempDir())
+	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, "")
 	p.poll(ctx)
 
 	// With context already cancelled, no feeds should be dispatched.
@@ -155,7 +155,7 @@ func TestTriggerSync_ReturnsTrueWhenIdle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, t.TempDir())
+	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, "")
 
 	got := p.TriggerSync(context.Background())
 	if !got {
@@ -165,7 +165,7 @@ func TestTriggerSync_ReturnsTrueWhenIdle(t *testing.T) {
 
 func TestTriggerSync_ReturnsFalseWhenAlreadySyncing(t *testing.T) {
 	db := testutil.OpenTestDB(t)
-	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, t.TempDir())
+	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, "")
 
 	// Simulate an in-progress sync by setting the flag directly.
 	p.syncing.Store(true)
@@ -197,7 +197,7 @@ func TestTriggerSync_ReturnsTrueAfterSyncCompletes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, t.TempDir())
+	p := NewPoller(context.Background(), &background.Group{}, db, time.Hour, 0, "")
 
 	// First TriggerSync should start the goroutine.
 	if !p.TriggerSync(context.Background()) {

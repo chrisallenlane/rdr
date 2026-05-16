@@ -13,7 +13,6 @@ import (
 	"github.com/chrisallenlane/rdr/internal/discover"
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
-	"github.com/chrisallenlane/rdr/internal/poller"
 )
 
 // feedsPageData carries data for the feeds page template.
@@ -138,7 +137,7 @@ func (s *Server) handleAddFeed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	feed := &model.Feed{ID: feedID, UserID: user.ID, URL: feedURL}
-	fetchErr := poller.FetchAndStoreFeed(r.Context(), s.db, feed, s.faviconsDir)
+	fetchErr := s.feedFetcher(r.Context(), s.db, feed, s.faviconsDir)
 
 	if htmx {
 		if fetchErr != nil {

@@ -7,6 +7,8 @@ import (
 
 	"github.com/chrisallenlane/rdr/internal/background"
 	"github.com/chrisallenlane/rdr/internal/discover"
+	"github.com/chrisallenlane/rdr/internal/model"
+	"github.com/chrisallenlane/rdr/internal/poller"
 )
 
 // Config bundles the dependencies the API needs from the host process.
@@ -34,6 +36,11 @@ type Config struct {
 	// auto-discovery. Defaults to discover.ResolveFeedURL.
 	FeedResolver func(ctx context.Context, rawURL string) (string, error)
 
+	// FeedFetcher performs the initial fetch of a newly-added feed.
+	// Defaults to poller.FetchAndStoreFeed. Tests stub this with a
+	// no-op to avoid real outbound HTTP.
+	FeedFetcher func(ctx context.Context, db *sql.DB, feed *model.Feed, faviconsDir string) error
+
 	// SyncFeeds triggers an account-wide feed sync. Returns true if a
 	// sync was started, false if one was already in progress. Nil
 	// causes /feeds/sync to behave as a no-op.
@@ -52,6 +59,7 @@ type Server struct {
 	db           *sql.DB
 	faviconsDir  string
 	feedResolver func(ctx context.Context, rawURL string) (string, error)
+	feedFetcher  func(ctx context.Context, db *sql.DB, feed *model.Feed, faviconsDir string) error
 	syncFeeds    func(ctx context.Context) bool
 	syncStatus   func() bool
 }
@@ -70,6 +78,11 @@ func New(cfg Config) http.Handler {
 		resolver = discover.ResolveFeedURL
 	}
 
+	fetcher := cfg.FeedFetcher
+	if fetcher == nil {
+		fetcher = poller.FetchAndStoreFeed
+	}
+
 	ctx := cfg.Ctx
 	if ctx == nil {
 		ctx = context.Background()
@@ -86,6 +99,7 @@ func New(cfg Config) http.Handler {
 		db:           cfg.DB,
 		faviconsDir:  cfg.FaviconsDir,
 		feedResolver: resolver,
+		feedFetcher:  fetcher,
 		syncFeeds:    cfg.SyncFeeds,
 		syncStatus:   cfg.SyncStatus,
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/chrisallenlane/rdr/internal/discover"
 	"github.com/chrisallenlane/rdr/internal/middleware"
 	"github.com/chrisallenlane/rdr/internal/model"
+	"github.com/chrisallenlane/rdr/internal/poller"
 )
 
 // Server holds application dependencies and implements http.Handler.
@@ -29,8 +30,12 @@ type Server struct {
 	staticFS     fs.FS
 	faviconsDir  string
 	feedResolver func(context.Context, string) (string, error) // resolves a URL to a feed URL
-	syncFeeds    func(ctx context.Context) bool                // triggers an async feed sync
-	syncStatus   func() bool                                   // returns true if sync in progress
+	// feedFetcher performs the initial fetch of a newly-added feed.
+	// Tests stub this with a no-op to avoid real outbound HTTP; production
+	// uses poller.FetchAndStoreFeed.
+	feedFetcher func(ctx context.Context, db *sql.DB, feed *model.Feed, faviconsDir string) error
+	syncFeeds   func(ctx context.Context) bool // triggers an async feed sync
+	syncStatus  func() bool                    // returns true if sync in progress
 }
 
 // PageData is the common data structure passed to every template render.
@@ -61,6 +66,7 @@ func NewServer(
 		staticFS:     staticFiles,
 		faviconsDir:  faviconsDir,
 		feedResolver: discover.ResolveFeedURL,
+		feedFetcher:  poller.FetchAndStoreFeed,
 	}
 
 	if err := s.parseTemplates(templateFiles); err != nil {
