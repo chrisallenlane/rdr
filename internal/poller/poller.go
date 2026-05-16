@@ -24,6 +24,14 @@ type Poller struct {
 	retentionDays int
 	faviconsDir   string
 	syncing       atomic.Bool
+
+	// VACUUM scheduling. lastVacuum gates the 24h cadence; on process
+	// restart it resets to zero, so the first poll cycle of every new
+	// process runs VACUUM once. consecutiveVacuumFailures shortens the
+	// retry interval after the first failure and escalates the log
+	// level after the third (see vacuumFailureBackoff).
+	lastVacuum                time.Time
+	consecutiveVacuumFailures int
 }
 
 // NewPoller creates a new Poller with the given database, poll interval,
@@ -159,5 +167,64 @@ func (p *Poller) poll(ctx context.Context) {
 	// Run data-retention cleanup at the end of each poll cycle.
 	runRetention(p.db, p.retentionDays)
 
+	// VACUUM at most once per 24h per process lifetime. TriggerSync
+	// also routes through poll(), so user-triggered syncs may run
+	// maybeVacuum too — the 24h gate keeps this from being abusive.
+	p.maybeVacuum(ctx)
+
 	slog.Info("poll cycle complete")
+}
+
+// vacuumFailureBackoff returns the wait time before retrying VACUUM
+// after repeated failures. Precondition: only called when
+// consecutiveVacuumFailures > 0 (case 1 is the first retry attempt).
+// The schedule (0 → 1h → 6h → 24h) means a persistent failure
+// surfaces as WARN, then ERROR, then settles at once-per-day logging
+// — no per-poll-cycle log storm.
+func (p *Poller) vacuumFailureBackoff() time.Duration {
+	switch p.consecutiveVacuumFailures {
+	case 1:
+		// Zero interval means the gate in maybeVacuum always passes,
+		// so VACUUM is retried on the very next poll cycle.
+		return 0
+	case 2:
+		return 1 * time.Hour
+	case 3:
+		return 6 * time.Hour
+	default:
+		return 24 * time.Hour
+	}
+}
+
+// maybeVacuum runs VACUUM if the configured interval has elapsed since
+// the last attempt. Successful VACUUM emits an INFO log with a duration
+// field; failures emit WARN (first two) or ERROR (third+) and update
+// lastVacuum to gate the retry backoff window.
+func (p *Poller) maybeVacuum(ctx context.Context) {
+	interval := 24 * time.Hour
+	if p.consecutiveVacuumFailures > 0 {
+		interval = p.vacuumFailureBackoff()
+	}
+	if time.Since(p.lastVacuum) < interval {
+		return
+	}
+
+	start := time.Now()
+	if _, err := p.db.ExecContext(ctx, "VACUUM"); err != nil {
+		p.consecutiveVacuumFailures++
+		level := slog.LevelWarn
+		if p.consecutiveVacuumFailures >= 3 {
+			level = slog.LevelError
+		}
+		slog.Log(ctx, level, "maintenance: VACUUM failed",
+			"error", err,
+			"consecutive_failures", p.consecutiveVacuumFailures,
+		)
+		// Record the attempt so the backoff window applies.
+		p.lastVacuum = time.Now()
+		return
+	}
+	p.lastVacuum = time.Now()
+	p.consecutiveVacuumFailures = 0
+	slog.Info("maintenance: VACUUM complete", "duration", time.Since(start))
 }

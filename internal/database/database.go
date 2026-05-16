@@ -22,18 +22,33 @@ func Open(databasePath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
 
-	// Set pragmas via Exec (modernc.org/sqlite does not support DSN pragmas).
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("setting journal_mode: %w", err)
+	// Pragmas applied at open. modernc.org/sqlite does not support DSN
+	// pragmas, so they must be set via Exec. Each entry's "why" is
+	// captured inline so the next maintainer can read intent without
+	// chasing commit history.
+	pragmas := []struct{ name, stmt string }{
+		{"journal_mode", "PRAGMA journal_mode=WAL"},
+		{"foreign_keys", "PRAGMA foreign_keys=ON"},
+		// 5000ms covers ordinary contention; without it, SQLite returns
+		// SQLITE_BUSY immediately on any concurrent access.
+		{"busy_timeout", "PRAGMA busy_timeout=5000"},
+		// NORMAL fsyncs the WAL only at checkpoint, not on every commit;
+		// safe under WAL mode (durable up to the last commit before crash).
+		{"synchronous", "PRAGMA synchronous=NORMAL"},
+		// 64 MiB page cache (negative value = KiB; -65536 KiB = 64 MiB).
+		{"cache_size", "PRAGMA cache_size=-65536"},
+		// In-memory temp store for sorts/groupings (ORDER BY pagination, etc.).
+		{"temp_store", "PRAGMA temp_store=MEMORY"},
+		// 256 MiB mmap hint. SQLite/the VFS may cap or ignore this;
+		// setting it is cheap insurance and never errors on platforms
+		// where mmap is unused.
+		{"mmap_size", "PRAGMA mmap_size=268435456"},
 	}
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("setting foreign_keys: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("setting busy_timeout: %w", err)
+	for _, p := range pragmas {
+		if _, err := db.Exec(p.stmt); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("setting %s: %w", p.name, err)
+		}
 	}
 
 	// Limit to one connection so all operations share the pragmas above.

@@ -1,12 +1,30 @@
 package poller
 
 import (
+	"bytes"
 	"database/sql"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/chrisallenlane/rdr/internal/testutil"
 )
+
+// captureSlog redirects slog.Default() to a JSON handler writing into a
+// buffer for the duration of the test. The returned function returns the
+// captured output as a string. Tests using this MUST NOT call
+// t.Parallel() — slog.SetDefault mutates global state.
+func captureSlog(t *testing.T) func() string {
+	t.Helper()
+
+	var buf bytes.Buffer
+	h := slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	prev := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return func() string { return buf.String() }
+}
 
 // insertFeed inserts a feed row and returns its id.
 func insertFeed(t *testing.T, db *sql.DB, userID int64) int64 {
@@ -393,4 +411,43 @@ func TestRunRetention(t *testing.T) {
 			t.Errorf("session count after runRetention(0) = %d, want 1 (expired cleaned)", got)
 		}
 	})
+}
+
+// TestRunMaintenance_Succeeds verifies the happy path: runMaintenance
+// against a healthy DB completes without an error log and the
+// surrounding runRetention call still works.
+func TestRunMaintenance_Succeeds(t *testing.T) {
+	getLogs := captureSlog(t)
+	db := testutil.OpenTestDB(t)
+
+	runRetention(db, 0)
+
+	if strings.Contains(getLogs(), "maintenance: PRAGMA optimize failed") {
+		t.Errorf("captured logs contained unexpected optimize failure:\n%s", getLogs())
+	}
+}
+
+// TestRunMaintenance_LogsErrorOnClosedDB verifies that a failing
+// PRAGMA optimize is logged at WARN and runMaintenance returns
+// normally (does not panic, does not abort the caller).
+func TestRunMaintenance_LogsErrorOnClosedDB(t *testing.T) {
+	getLogs := captureSlog(t)
+	db := testutil.OpenTestDB(t)
+
+	// Close the DB; subsequent Exec returns ErrConnDone or similar.
+	if err := db.Close(); err != nil {
+		t.Fatalf("closing DB: %v", err)
+	}
+
+	// runMaintenance must not panic.
+	runMaintenance(db)
+
+	logs := getLogs()
+	if !strings.Contains(logs, "maintenance: PRAGMA optimize failed") {
+		t.Errorf("expected WARN log for failed PRAGMA optimize, got:\n%s", logs)
+	}
+	// Confirm the level is WARN, not ERROR.
+	if !strings.Contains(logs, `"level":"WARN"`) {
+		t.Errorf("expected level=WARN in log output, got:\n%s", logs)
+	}
 }

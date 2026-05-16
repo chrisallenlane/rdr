@@ -57,14 +57,16 @@ Pico CSS was removed in favor of a hand-rolled Solarized-themed stylesheet
 to keep the design minimal and self-contained.
 
 **Pure Go SQLite.** Uses `modernc.org/sqlite` (a cgo-free SQLite
-implementation) so the binary cross-compiles without a C toolchain. WAL
-mode and foreign keys are enabled via pragmas at connection time.
+implementation) so the binary cross-compiles without a C toolchain. Connection
+pragmas are applied at open time: WAL mode, foreign keys, 5 s busy timeout,
+NORMAL synchronous, 64 MiB page cache, in-memory temp store, and 256 MiB mmap
+hint.
 
 **Goose migrations.** Schema lives in `internal/database/migrations/` as
-numbered SQL files (`001_initial.sql`, `002_*.sql`, ...). `pressly/goose`
-runs pending migrations on every startup. Migrations are up-only;
-rollback is performed by restoring from backup. `001_initial.sql` is the
-v1.1.0 schema with `IF NOT EXISTS` everywhere so it boots cleanly against
+numbered SQL files (`001_initial.sql` through `004_perf_indexes.sql`).
+`pressly/goose` runs pending migrations on every startup. Migrations are
+up-only; rollback is performed by restoring from backup. `001_initial.sql` is
+the v1.1.0 schema with `IF NOT EXISTS` everywhere so it boots cleanly against
 either a fresh DB or an existing v1.1.0 install. Column changes
 (rename/drop/retype) still require a major-version bump and DB wipe.
 
@@ -130,12 +132,16 @@ button). For each feed the poll cycle:
 3. Calls `synthesizeMediaContent` (`internal/poller/media.go`) to build HTML
    from Media RSS / Yahoo Media extension data when `Content` and `Description`
    are both empty (handles YouTube, Vimeo, podcast feeds)
-4. Upserts items into the database (`INSERT OR IGNORE` by GUID)
-5. Updates feed metadata (title, site URL, last-fetched timestamp)
-6. Downloads a favicon via `favicon.Fetch` (best-effort, errors logged)
+4. Wraps the metadata UPDATE and all item `INSERT OR IGNORE` calls in a single
+   transaction — either the whole batch lands or nothing does
+5. Downloads a favicon via `favicon.Fetch` outside the transaction
+   (best-effort, errors logged)
 
-After each poll cycle, `PruneOldItems` deletes read items older than the
-configured retention period (if set).
+After each poll cycle, `runRetention` deletes read items older than the
+configured retention period (if set) and cleans expired sessions. It then calls
+`runMaintenance` (`PRAGMA optimize`) to update query-planner statistics on
+stale tables. Finally, `maybeVacuum` runs `VACUUM` at most once per 24 hours
+per process lifetime, with exponential backoff on failure.
 
 ## Content Pipeline
 

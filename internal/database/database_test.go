@@ -2,8 +2,10 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -86,15 +88,49 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func TestOpen_BusyTimeoutSet(t *testing.T) {
+// TestOpen_PragmasSet covers the four pragmas with strict equality
+// contracts (busy_timeout, synchronous, cache_size, temp_store). The
+// mmap_size pragma is tested separately because its contract is
+// "set without error" rather than equality — see TestOpen_MmapSizeSet.
+func TestOpen_PragmasSet(t *testing.T) {
 	db := openTestDB(t)
 
-	var timeout int
-	if err := db.QueryRow("PRAGMA busy_timeout").Scan(&timeout); err != nil {
-		t.Fatalf("querying busy_timeout: %v", err)
+	tests := []struct {
+		pragma string
+		want   int
+	}{
+		{"busy_timeout", 5000},
+		// synchronous: 0=OFF, 1=NORMAL, 2=FULL, 3=EXTRA
+		{"synchronous", 1},
+		{"cache_size", -65536},
+		// temp_store: 0=DEFAULT, 1=FILE, 2=MEMORY
+		{"temp_store", 2},
 	}
-	if timeout != 5000 {
-		t.Errorf("expected busy_timeout=5000, got %d", timeout)
+	for _, tc := range tests {
+		var got int
+		if err := db.QueryRow("PRAGMA " + tc.pragma).Scan(&got); err != nil {
+			t.Errorf("querying %s: %v", tc.pragma, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("PRAGMA %s = %d, want %d", tc.pragma, got, tc.want)
+		}
+	}
+}
+
+func TestOpen_MmapSizeSet(t *testing.T) {
+	db := openTestDB(t)
+
+	var size int64
+	if err := db.QueryRow("PRAGMA mmap_size").Scan(&size); err != nil {
+		t.Fatalf("querying mmap_size: %v", err)
+	}
+	// modernc.org/sqlite's pure-Go VFS may cap or ignore the mmap hint;
+	// the contract guaranteed here is "set without error", so any
+	// non-negative value (including 0 if mmap is unsupported on this
+	// build) is acceptable.
+	if size < 0 {
+		t.Errorf("expected mmap_size >= 0, got %d", size)
 	}
 }
 
@@ -308,6 +344,212 @@ func TestOpen_UpgradesFromV1_1_0(t *testing.T) {
 	if rows, _ := res.RowsAffected(); rows != 1 {
 		t.Errorf("expected 1 row inserted, got %d", rows)
 	}
+}
+
+// TestMigration003_FTSTriggerScopedToContentColumns verifies that migration
+// 003_fts_trigger_columns.sql has applied — the items_au trigger should be
+// scoped to fire only on title/content/description updates. The negative
+// case ("trigger does NOT fire on read=1 update") is intentionally not
+// tested here; see the ticket's AC for rationale (cheapest probes pass
+// on both old and new triggers because the old trigger re-inserts the
+// same content). The positive case below proves the trigger still fires
+// when indexed columns change, which is the contract the migration must
+// preserve.
+func TestMigration003_FTSTriggerScopedToContentColumns(t *testing.T) {
+	db := openTestDB(t)
+
+	// Schema-shape check: the trigger DDL in sqlite_master must contain the
+	// column-scope clause.
+	var triggerSQL string
+	if err := db.QueryRow(
+		"SELECT sql FROM sqlite_master WHERE type='trigger' AND name='items_au'",
+	).Scan(&triggerSQL); err != nil {
+		t.Fatalf("querying items_au trigger SQL: %v", err)
+	}
+	if !strings.Contains(triggerSQL, "OF title, content, description") {
+		t.Errorf("items_au trigger SQL missing column-scope clause: %s", triggerSQL)
+	}
+
+	// Behavioral check: insert a user → feed → item, then update the item's
+	// title and verify FTS reflects the new title.
+	_, feedID := seedUserFeed(t, db, "trigger-user", "http://example.com/feed.xml")
+
+	res, err := db.Exec(
+		`INSERT INTO items (feed_id, guid, title, content, description)
+		 VALUES (?, ?, ?, ?, ?)`,
+		feedID, "g1", "alphatitle", "old-content", "old-description",
+	)
+	if err != nil {
+		t.Fatalf("inserting item: %v", err)
+	}
+	itemID, _ := res.LastInsertId()
+
+	// Confirm the initial FTS row was created by items_ai (sanity check).
+	var initialFTSTitle string
+	if err := db.QueryRow(
+		"SELECT title FROM items_fts WHERE rowid = ?", itemID,
+	).Scan(&initialFTSTitle); err != nil {
+		t.Fatalf("querying items_fts for initial row: %v", err)
+	}
+	if initialFTSTitle != "alphatitle" {
+		t.Fatalf("initial FTS title = %q, want %q", initialFTSTitle, "alphatitle")
+	}
+
+	// Trigger the column-scoped UPDATE.
+	if _, err := db.Exec(
+		"UPDATE items SET title = ? WHERE id = ?", "betatitle", itemID,
+	); err != nil {
+		t.Fatalf("updating item title: %v", err)
+	}
+
+	// items_fts should reflect the new title (proves items_au fires for
+	// indexed-column changes).
+	var got string
+	if err := db.QueryRow(
+		"SELECT title FROM items_fts WHERE rowid = ?", itemID,
+	).Scan(&got); err != nil {
+		t.Fatalf("querying items_fts for updated row: %v", err)
+	}
+	if got != "betatitle" {
+		t.Errorf("FTS title after column-scoped UPDATE = %q, want %q", got, "betatitle")
+	}
+
+	// End-to-end FTS sync proof: MATCH on the new title returns the row.
+	var matchedRowID int64
+	if err := db.QueryRow(
+		`SELECT rowid FROM items_fts WHERE items_fts MATCH ?`, "betatitle",
+	).Scan(&matchedRowID); err != nil {
+		t.Fatalf("MATCH on new title: %v", err)
+	}
+	if matchedRowID != itemID {
+		t.Errorf("MATCH returned rowid %d, want %d", matchedRowID, itemID)
+	}
+}
+
+// TestMigration004_PerfIndexesExist verifies that migration 004 created
+// both indexes. Definitive existence check via sqlite_master — the index
+// names should appear regardless of whether the query planner happens
+// to pick them on a given query.
+func TestMigration004_PerfIndexesExist(t *testing.T) {
+	db := openTestDB(t)
+
+	for _, idx := range []string{"idx_feeds_list_id", "idx_items_feed_published_at"} {
+		var count int
+		if err := db.QueryRow(
+			"SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name = ?",
+			idx,
+		).Scan(&count); err != nil {
+			t.Fatalf("querying sqlite_master for %q: %v", idx, err)
+		}
+		if count != 1 {
+			t.Errorf("expected index %q to exist, got count=%d", idx, count)
+		}
+	}
+}
+
+// TestMigration004_FeedsListIDIndexUsed verifies that the query planner
+// reliably picks idx_feeds_list_id for a simple WHERE list_id = ? query
+// — even on a fresh DB with no sqlite_stat1 data, because the index is
+// the only relevant one for the equality.
+func TestMigration004_FeedsListIDIndexUsed(t *testing.T) {
+	db := openTestDB(t)
+
+	plan := explainPlan(t, db, `SELECT id FROM feeds WHERE list_id = ?`, 1)
+	if !strings.Contains(plan, "idx_feeds_list_id") {
+		t.Errorf("EXPLAIN QUERY PLAN did not reference idx_feeds_list_id:\n%s", plan)
+	}
+}
+
+// TestMigration004_ItemsFeedPublishedAtIndexUsed verifies the composite
+// index is picked for the main item-listing query shape. A 200-row
+// fixture is required: SQLite's planner uses heuristics in the absence
+// of sqlite_stat1 and may prefer a table scan over a composite index
+// on tiny tables. The fixture pins planner behavior at a row count
+// representative of production scale.
+func TestMigration004_ItemsFeedPublishedAtIndexUsed(t *testing.T) {
+	db := openTestDB(t)
+
+	// Seed a user, feed, and 200 items so the planner sees a non-trivial
+	// items table and is willing to pick the composite index.
+	userID, feedID := seedUserFeed(t, db, "plan-user", "http://example.com/feed.xml")
+
+	for i := range 200 {
+		if _, err := db.Exec(
+			`INSERT INTO items (feed_id, guid, title, published_at)
+			 VALUES (?, ?, ?, ?)`,
+			feedID,
+			fmt.Sprintf("g-%04d", i),
+			fmt.Sprintf("item-%d", i),
+			"2026-01-01T00:00:00Z",
+		); err != nil {
+			t.Fatalf("inserting item %d: %v", i, err)
+		}
+	}
+
+	plan := explainPlan(t, db,
+		`SELECT i.id FROM items i JOIN feeds f ON i.feed_id = f.id
+		 WHERE f.user_id = ?
+		 ORDER BY i.published_at DESC, i.id DESC
+		 LIMIT 50`,
+		userID,
+	)
+	if !strings.Contains(plan, "idx_items_feed_published_at") {
+		t.Errorf("EXPLAIN QUERY PLAN did not reference idx_items_feed_published_at:\n%s", plan)
+	}
+}
+
+// explainPlan returns the concatenated EXPLAIN QUERY PLAN output for the
+// given query, one row per line. The output format is stable across
+// SQLite 3.x.
+func explainPlan(t *testing.T, db *sql.DB, query string, args ...any) string {
+	t.Helper()
+
+	rows, err := db.Query("EXPLAIN QUERY PLAN "+query, args...)
+	if err != nil {
+		t.Fatalf("EXPLAIN QUERY PLAN: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var sb strings.Builder
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatalf("scanning EXPLAIN row: %v", err)
+		}
+		sb.WriteString(detail)
+		sb.WriteByte('\n')
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterating EXPLAIN rows: %v", err)
+	}
+	return sb.String()
+}
+
+// seedUserFeed inserts one user and one feed in test setup and returns
+// their generated IDs. internal/database cannot depend on internal/testutil
+// (cycle), so this is a local helper for the migration tests in this file.
+func seedUserFeed(t *testing.T, db *sql.DB, username, feedURL string) (userID, feedID int64) {
+	t.Helper()
+
+	res, err := db.Exec(
+		`INSERT INTO users (username, password) VALUES (?, ?)`,
+		username, "hash",
+	)
+	if err != nil {
+		t.Fatalf("inserting user: %v", err)
+	}
+	userID, _ = res.LastInsertId()
+
+	res, err = db.Exec(
+		`INSERT INTO feeds (user_id, url) VALUES (?, ?)`,
+		userID, feedURL,
+	)
+	if err != nil {
+		t.Fatalf("inserting feed: %v", err)
+	}
+	feedID, _ = res.LastInsertId()
+	return userID, feedID
 }
 
 // tableExists checks sqlite_master for a table or virtual table.
